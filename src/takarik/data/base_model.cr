@@ -495,10 +495,6 @@ module Takarik::Data
       self.name.split("::").last.underscore.pluralize
     end
 
-    def self.primary_key
-      "id"
-    end
-
     # Query methods
     def self.all
       query = "SELECT * FROM #{table_name}"
