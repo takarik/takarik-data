@@ -76,28 +76,66 @@ module Takarik::Data
       self
     end
 
-    # Handle BETWEEN with two values
-    def where(column : String, min_value : DB::Any, max_value : DB::Any)
-      @where_conditions << "#{column} BETWEEN ? AND ?"
-      @where_params << min_value << max_value
-      self
-    end
 
-    # Handle BETWEEN with Range
+    # Handle BETWEEN with Range - support multiple numeric types
     def where(column : String, range : Range(Int32, Int32))
-      @where_conditions << "#{column} BETWEEN ? AND ?"
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
       @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
       self
     end
 
     def where(column : String, range : Range(Int64, Int64))
-      @where_conditions << "#{column} BETWEEN ? AND ?"
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
+    def where(column : String, range : Range(Float32, Float32))
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
       @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
       self
     end
 
     def where(column : String, range : Range(Float64, Float64))
-      @where_conditions << "#{column} BETWEEN ? AND ?"
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
+    # Handle BETWEEN with Time ranges
+    def where(column : String, range : Range(Time, Time))
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
+    # Handle BETWEEN with String ranges (for alphabetical ranges)
+    def where(column : String, range : Range(String, String))
+      if range.exclusive?
+        @where_conditions << "#{column} >= ? AND #{column} < ?"
+      else
+        @where_conditions << "#{column} BETWEEN ? AND ?"
+      end
       @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
       self
     end

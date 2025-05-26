@@ -82,9 +82,6 @@ module Takarik::Data
       query.where(column, values)
     end
 
-    def self.where(column : String, min_value : DB::Any, max_value : DB::Any)
-      query.where(column, min_value, max_value)
-    end
 
     def self.where(column : String, range : Range(Int32, Int32))
       query.where(column, range)
@@ -94,7 +91,19 @@ module Takarik::Data
       query.where(column, range)
     end
 
+    def self.where(column : String, range : Range(Float32, Float32))
+      query.where(column, range)
+    end
+
     def self.where(column : String, range : Range(Float64, Float64))
+      query.where(column, range)
+    end
+
+    def self.where(column : String, range : Range(Time, Time))
+      query.where(column, range)
+    end
+
+    def self.where(column : String, range : Range(String, String))
       query.where(column, range)
     end
 

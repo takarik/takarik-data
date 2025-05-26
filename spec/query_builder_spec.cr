@@ -64,8 +64,32 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds BETWEEN queries" do
-      query = User.where("age", 26.as(DB::Any), 32.as(DB::Any))
+      query = User.where("age", 26..32)
       query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
+    end
+
+    it "supports different Range types" do
+      # Integer ranges
+      query = User.where("age", 18..65)
+      query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
+
+      # Exclusive ranges
+      query = User.where("age", 18...65)
+      query.to_sql.should contain("WHERE age >= ? AND age < ?")
+
+      # Float ranges
+      query = User.where("score", 80.0..100.0)
+      query.to_sql.should contain("WHERE score BETWEEN ? AND ?")
+
+      # String ranges (alphabetical)
+      query = User.where("name", "A".."M")
+      query.to_sql.should contain("WHERE name BETWEEN ? AND ?")
+
+      # Time ranges
+      start_time = Time.utc(2023, 1, 1)
+      end_time = Time.utc(2023, 12, 31)
+      query = User.where("created_at", start_time..end_time)
+      query.to_sql.should contain("WHERE created_at BETWEEN ? AND ?")
     end
 
     it "builds IS NULL queries" do
@@ -110,10 +134,19 @@ describe Takarik::Data::QueryBuilder do
       query.first.try(&.name).should eq("Alice")
 
       # Test BETWEEN queries
-      query = User.where("age", 26.as(DB::Any), 32.as(DB::Any))
+      query = User.where("age", 26..32)
       query.size.should eq(2)
       query.map(&.name).should contain("Bob")
       query.map(&.name).should contain("Diana")
+
+      # Test different range types with data
+      query = User.where("age", 25..30)
+      query.size.should eq(3)  # Alice (25), Bob (30), Diana (28)
+
+      # Test exclusive ranges
+      query = User.where("age", 26...30)  # Exclusive end
+      query.size.should eq(1)  # Only Diana (28)
+      query.first.try(&.name).should eq("Diana")
     end
   end
 
