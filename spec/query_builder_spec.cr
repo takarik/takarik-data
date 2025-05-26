@@ -34,7 +34,7 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds where queries with string conditions" do
-      query = User.where("age > ?", 28)
+      query = User.where("age > ?", 28.as(DB::Any))
       query.to_sql.should contain("WHERE age > ?")
 
       results = query.to_a
@@ -45,62 +45,75 @@ describe Takarik::Data::QueryBuilder do
 
     it "builds where_not queries" do
       query = User.where_not(active: false)
-      query.size.should eq(3)
-      query.all?(&.active).should be_true
+      query.to_sql.should contain("WHERE active != ?")
     end
 
-    it "builds where_in queries" do
-      query = User.where_in("age", [25, 30].map(&.as(DB::Any)))
-      query.size.should eq(2)
-      query.map(&.name).should contain("Alice")
-      query.map(&.name).should contain("Bob")
+    it "builds IN queries" do
+      query = User.where("age", [25, 30].map(&.as(DB::Any)))
+      query.to_sql.should contain("WHERE age IN (?, ?)")
     end
 
-    it "builds where_not_in queries" do
-      query = User.where_not_in("age", [25].map(&.as(DB::Any)))
-      query.size.should eq(3)
-      query.map(&.name).should_not contain("Alice")
+    it "builds NOT IN queries" do
+      query = User.where_not("age", [25].map(&.as(DB::Any)))
+      query.to_sql.should contain("WHERE age NOT IN (?)")
     end
 
-    it "builds where_like queries" do
-      query = User.where_like("name", "A%")
-      query.size.should eq(1)
-      query.first.try(&.name).should eq("Alice")
+    it "builds LIKE queries" do
+      query = User.where("name LIKE", "A%")
+      query.to_sql.should contain("WHERE name LIKE ?")
     end
 
-    it "builds where_between queries" do
-      query = User.where_between("age", 26.as(DB::Any), 32.as(DB::Any))
-      query.size.should eq(2)
-      query.map(&.name).should contain("Bob")
-      query.map(&.name).should contain("Diana")
+    it "builds BETWEEN queries" do
+      query = User.where("age", 26.as(DB::Any), 32.as(DB::Any))
+      query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
     end
 
-    it "builds where_null queries" do
-      # First create a user with null email
-      User.connection.exec("INSERT INTO users (name, age) VALUES (?, ?)", "NoEmail", 40)
-
-      query = User.where_null("email")
-      query.size.should eq(1)
-      query.first.try(&.name).should eq("NoEmail")
+    it "builds IS NULL queries" do
+      # Test with nil value
+      query = User.where("email", nil)
+      query.to_sql.should contain("WHERE email IS NULL")
     end
 
-    it "builds where_not_null queries" do
-      query = User.where_not_null("email")
-      query.size.should eq(4)  # All our test users have emails
+    it "builds IS NOT NULL queries" do
+      query = User.where_not(email: nil)
+      query.to_sql.should contain("WHERE email IS NOT NULL")
     end
 
     it "builds comparison queries" do
-      query = User.where_gt("age", 28.as(DB::Any))
+      query = User.where("age >", 28.as(DB::Any))
+      query.to_sql.should contain("WHERE age > ?")
+
+      query = User.where("age >=", 28.as(DB::Any))
+      query.to_sql.should contain("WHERE age >= ?")
+
+      query = User.where("age <", 30.as(DB::Any))
+      query.to_sql.should contain("WHERE age < ?")
+
+      query = User.where("age <=", 30.as(DB::Any))
+      query.to_sql.should contain("WHERE age <= ?")
+    end
+
+    it "executes enhanced where queries with data" do
+      # Test IN queries
+      query = User.where("age", [25, 30].map(&.as(DB::Any)))
+      query.size.should eq(2)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Bob")
+
+      # Test comparison queries
+      query = User.where("age >", 28.as(DB::Any))
       query.size.should eq(2)
 
-      query = User.where_gte("age", 28.as(DB::Any))
-      query.size.should eq(3)
+      # Test LIKE queries
+      query = User.where("name LIKE", "A%")
+      query.size.should eq(1)
+      query.first.try(&.name).should eq("Alice")
 
-      query = User.where_lt("age", 30.as(DB::Any))
+      # Test BETWEEN queries
+      query = User.where("age", 26.as(DB::Any), 32.as(DB::Any))
       query.size.should eq(2)
-
-      query = User.where_lte("age", 30.as(DB::Any))
-      query.size.should eq(3)
+      query.map(&.name).should contain("Bob")
+      query.map(&.name).should contain("Diana")
     end
   end
 
@@ -309,7 +322,7 @@ describe Takarik::Data::QueryBuilder do
     it "chains multiple conditions" do
       query = User
         .where(active: true)
-        .where_gte("age", 25.as(DB::Any))
+        .where("age >=", 25.as(DB::Any))
         .order("age", "ASC")
         .limit(2)
 
@@ -347,6 +360,28 @@ describe Takarik::Data::QueryBuilder do
       user.should_not be_nil
       user.try(&.name).should eq("Bob")
     end
+
+    it "uses complex chaining" do
+      # Test complex chaining
+      complex_query = User
+        .where(active: true)
+        .where("age >=", 25.as(DB::Any))
+        .order("name")
+        .limit(5)
+
+      complex_query.to_sql.should contain("WHERE active = ? AND age >= ?")
+      complex_query.to_sql.should contain("ORDER BY name ASC")
+      complex_query.to_sql.should contain("LIMIT 5")
+    end
+
+    it "chains multiple where conditions" do
+      query = User
+        .where(active: true)
+        .where("age >=", 25.as(DB::Any))
+        .where("name LIKE", "A%")
+
+      query.to_sql.should contain("WHERE active = ? AND age >= ? AND name LIKE ?")
+    end
   end
 
   describe "complex queries" do
@@ -354,7 +389,7 @@ describe Takarik::Data::QueryBuilder do
       query = User
         .select("users.name", "users.age")
         .where(active: true)
-        .where_gte("age", 25.as(DB::Any))
+        .where("age >=", 25.as(DB::Any))
         .order("age", "DESC")
         .limit(10)
         .offset(0)

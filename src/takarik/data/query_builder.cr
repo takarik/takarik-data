@@ -25,11 +25,21 @@ module Takarik::Data
       self
     end
 
-    # Where conditions
+    # Enhanced where method with multiple signatures
     def where(conditions : Hash(String, DB::Any))
       conditions.each do |column, value|
-        @where_conditions << "#{column} = ?"
-        @where_params << value
+        if value.nil?
+          # Handle NULL checks
+          @where_conditions << "#{column} IS NULL"
+        elsif value.is_a?(Array)
+          # Handle IN clauses
+          placeholders = (["?"] * value.size).join(", ")
+          @where_conditions << "#{column} IN (#{placeholders})"
+          @where_params.concat(value)
+        else
+          @where_conditions << "#{column} = ?"
+          @where_params << value
+        end
       end
       self
     end
@@ -44,11 +54,66 @@ module Takarik::Data
       self
     end
 
-    # Advanced where conditions
+    # Enhanced where with operator support
+    def where(column_with_operator : String, value : DB::Any)
+      if column_with_operator.includes?("?")
+        # This is a complete condition with placeholders, treat as raw condition
+        @where_conditions << column_with_operator
+        @where_params << value
+      elsif column_with_operator.includes?(" ")
+        # Handle cases like "age >", "name LIKE", etc.
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value
+      else
+        # Regular equality
+        if value.nil?
+          @where_conditions << "#{column_with_operator} IS NULL"
+        else
+          @where_conditions << "#{column_with_operator} = ?"
+          @where_params << value
+        end
+      end
+      self
+    end
+
+    # Handle BETWEEN with two values
+    def where(column : String, min_value : DB::Any, max_value : DB::Any)
+      @where_conditions << "#{column} BETWEEN ? AND ?"
+      @where_params << min_value << max_value
+      self
+    end
+
+    # Handle BETWEEN with Range
+    def where(column : String, range : Range(Int32, Int32))
+      @where_conditions << "#{column} BETWEEN ? AND ?"
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
+    def where(column : String, range : Range(Int64, Int64))
+      @where_conditions << "#{column} BETWEEN ? AND ?"
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
+    def where(column : String, range : Range(Float64, Float64))
+      @where_conditions << "#{column} BETWEEN ? AND ?"
+      @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+      self
+    end
+
     def where_not(conditions : Hash(String, DB::Any))
       conditions.each do |column, value|
-        @where_conditions << "#{column} != ?"
-        @where_params << value
+        if value.nil?
+          @where_conditions << "#{column} IS NOT NULL"
+        elsif value.is_a?(Array)
+          placeholders = (["?"] * value.size).join(", ")
+          @where_conditions << "#{column} NOT IN (#{placeholders})"
+          @where_params.concat(value)
+        else
+          @where_conditions << "#{column} != ?"
+          @where_params << value
+        end
       end
       self
     end
@@ -57,69 +122,10 @@ module Takarik::Data
       where_not(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
     end
 
-    def where_in(column : String, values : Array(DB::Any))
-      placeholders = (["?"] * values.size).join(", ")
-      @where_conditions << "#{column} IN (#{placeholders})"
-      @where_params.concat(values)
-      self
-    end
-
-    def where_not_in(column : String, values : Array(DB::Any))
+    def where_not(column : String, values : Array(DB::Any))
       placeholders = (["?"] * values.size).join(", ")
       @where_conditions << "#{column} NOT IN (#{placeholders})"
       @where_params.concat(values)
-      self
-    end
-
-    def where_like(column : String, pattern : String)
-      @where_conditions << "#{column} LIKE ?"
-      @where_params << pattern.as(DB::Any)
-      self
-    end
-
-    def where_ilike(column : String, pattern : String)
-      @where_conditions << "#{column} ILIKE ?"
-      @where_params << pattern.as(DB::Any)
-      self
-    end
-
-    def where_between(column : String, start_value : DB::Any, end_value : DB::Any)
-      @where_conditions << "#{column} BETWEEN ? AND ?"
-      @where_params << start_value << end_value
-      self
-    end
-
-    def where_null(column : String)
-      @where_conditions << "#{column} IS NULL"
-      self
-    end
-
-    def where_not_null(column : String)
-      @where_conditions << "#{column} IS NOT NULL"
-      self
-    end
-
-    def where_gt(column : String, value : DB::Any)
-      @where_conditions << "#{column} > ?"
-      @where_params << value
-      self
-    end
-
-    def where_gte(column : String, value : DB::Any)
-      @where_conditions << "#{column} >= ?"
-      @where_params << value
-      self
-    end
-
-    def where_lt(column : String, value : DB::Any)
-      @where_conditions << "#{column} < ?"
-      @where_params << value
-      self
-    end
-
-    def where_lte(column : String, value : DB::Any)
-      @where_conditions << "#{column} <= ?"
-      @where_params << value
       self
     end
 
@@ -453,6 +459,14 @@ module Takarik::Data
         # Call the original method_missing
         super
       {% end %}
+    end
+
+    # Handle IN clauses with arrays
+    def where(column : String, values : Array(DB::Any))
+      placeholders = (["?"] * values.size).join(", ")
+      @where_conditions << "#{column} IN (#{placeholders})"
+      @where_params.concat(values)
+      self
     end
   end
 end

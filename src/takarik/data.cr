@@ -74,6 +74,30 @@ module Takarik::Data
       query.where(condition, *params)
     end
 
+    def self.where(column_with_operator : String, value : DB::Any)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column : String, values : Array(DB::Any))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, min_value : DB::Any, max_value : DB::Any)
+      query.where(column, min_value, max_value)
+    end
+
+    def self.where(column : String, range : Range(Int32, Int32))
+      query.where(column, range)
+    end
+
+    def self.where(column : String, range : Range(Int64, Int64))
+      query.where(column, range)
+    end
+
+    def self.where(column : String, range : Range(Float64, Float64))
+      query.where(column, range)
+    end
+
     def self.where_not(conditions : Hash(String, DB::Any))
       query.where_not(conditions)
     end
@@ -82,44 +106,8 @@ module Takarik::Data
       query.where_not(**conditions)
     end
 
-    def self.where_in(column : String, values : Array(DB::Any))
-      query.where_in(column, values)
-    end
-
-    def self.where_not_in(column : String, values : Array(DB::Any))
-      query.where_not_in(column, values)
-    end
-
-    def self.where_like(column : String, pattern : String)
-      query.where_like(column, pattern)
-    end
-
-    def self.where_between(column : String, min : DB::Any, max : DB::Any)
-      query.where_between(column, min, max)
-    end
-
-    def self.where_null(column : String)
-      query.where_null(column)
-    end
-
-    def self.where_not_null(column : String)
-      query.where_not_null(column)
-    end
-
-    def self.where_gt(column : String, value : DB::Any)
-      query.where_gt(column, value)
-    end
-
-    def self.where_gte(column : String, value : DB::Any)
-      query.where_gte(column, value)
-    end
-
-    def self.where_lt(column : String, value : DB::Any)
-      query.where_lt(column, value)
-    end
-
-    def self.where_lte(column : String, value : DB::Any)
-      query.where_lte(column, value)
+    def self.where_not(column : String, values : Array(DB::Any))
+      query.where_not(column, values)
     end
 
     def self.select(*columns : String)

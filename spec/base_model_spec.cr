@@ -272,7 +272,7 @@ describe Takarik::Data::BaseModel do
     end
 
     it "chains scopes" do
-      active_adults = User.where(active: true).where_gte("age", 18)
+      active_adults = User.where(active: true).where("age >=", 18.as(DB::Any))
       active_adults.size.should eq(1)
       active_adults.first.try(&.name).should eq("Bob")
     end
