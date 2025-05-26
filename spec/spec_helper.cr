@@ -45,7 +45,7 @@ SQL
 class User < Takarik::Data::BaseModel
   table_name "users"
 
-  column id, Int32
+  primary_key id, Int32
   column name, String
   column email, String
   column age, Int32
@@ -80,7 +80,7 @@ end
 class Post < Takarik::Data::BaseModel
   table_name "posts"
 
-  column id, Int32
+  primary_key id, Int32
   column title, String
   column content, String
   column user_id, Int32
@@ -108,7 +108,7 @@ end
 class Comment < Takarik::Data::BaseModel
   table_name "comments"
 
-  column id, Int32
+  primary_key id, Int32
   column content, String
   column post_id, Int32
   column user_id, Int32

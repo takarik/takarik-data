@@ -14,13 +14,115 @@ module Takarik::Data
     # Class-level configuration
     @@connection : DB::Database?
 
+    # Class variable to store column names for each model
+    @@column_names = {} of String => Array(String)
+
     # Instance variables
     @attributes = {} of String => DB::Any
     @persisted = false
     @changed_attributes = Set(String).new
 
+    # Class method to get column names for this model
+    def self.column_names
+      @@column_names[self.name]? || [] of String
+    end
+
+    # Class method to add a column name
+    def self.add_column_name(name : String)
+      @@column_names[self.name] ||= [] of String
+      @@column_names[self.name] << name unless @@column_names[self.name].includes?(name)
+    end
+
+    # Macro to define the primary key column
+    macro primary_key(name = "id", type = Int64, **options)
+      # Register this column name (without quotes)
+      add_column_name({{name.id.stringify}})
+
+      {% if type == Int32 %}
+        property {{name.id}} : Int32?
+      {% elsif type == Int64 %}
+        property {{name.id}} : Int64?
+      {% elsif type == String %}
+        property {{name.id}} : String?
+      {% else %}
+        property {{name.id}} : {{type}}?
+      {% end %}
+
+      # Override setter to track changes and sync with attributes
+      def {{name.id}}=(value : {{type}}?)
+        old_value = @{{name.id}}
+        @{{name.id}} = value
+
+        # Also update the attributes hash
+        if value.nil?
+          @attributes.delete({{name.stringify}})
+        else
+          @attributes[{{name.stringify}}] = value.as(DB::Any)
+        end
+
+        # Track changes
+        if old_value != value
+          @changed_attributes << {{name.stringify}}
+        end
+        value
+      end
+
+      # Override getter to return from instance variable or attributes
+      def {{name.id}}
+        if @{{name.id}}
+          @{{name.id}}
+        elsif @attributes.has_key?({{name.stringify}})
+          value = @attributes[{{name.stringify}}]
+          {% if type == Int32 %}
+            case value
+            when Int32
+              value
+            when Int64
+              value.to_i32
+            when String
+              value.to_i32?
+            else
+              nil
+            end
+          {% elsif type == Int64 %}
+            case value
+            when Int64
+              value
+            when Int32
+              value.to_i64
+            when String
+              value.to_i64?
+            else
+              nil
+            end
+          {% elsif type == String %}
+            case value
+            when String
+              value
+            when Nil
+              nil
+            else
+              value.to_s
+            end
+          {% else %}
+            value.as?({{type}})
+          {% end %}
+        else
+          nil
+        end
+      end
+
+      # Override the class method to return the primary key name
+      def self.primary_key
+        {{name.id.stringify}}
+      end
+    end
+
     # Macro to define database columns with types
     macro column(name, type, **options)
+      # Register this column name (without quotes)
+      add_column_name({{name.id.stringify}})
+
       {% if type == Int32 %}
         property {{name.id}} : Int32?
       {% elsif type == Int64 %}
@@ -132,13 +234,6 @@ module Takarik::Data
     # Macro to set table name
     macro table_name(name)
       def self.table_name
-        {{name.stringify}}
-      end
-    end
-
-    # Macro to set primary key
-    macro primary_key(name)
-      def self.primary_key
         {{name.stringify}}
       end
     end
@@ -503,6 +598,96 @@ module Takarik::Data
       rs.column_names.each_with_index do |column_name, index|
         value = rs.read
         @attributes[column_name] = value
+      end
+
+      # Now set all instance variables from the attributes
+      @attributes.each do |column_name, value|
+        # Also set the instance variable if it exists
+        {% begin %}
+          case column_name
+          {% for ivar in @type.instance_vars %}
+            {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
+              when {{ivar.name.stringify}}
+                # Handle type conversion for common database types
+                {% if ivar.type.stringify.includes?("Int32") %}
+                  @{{ivar.name}} = case value
+                    when Int32
+                      value
+                    when Int64
+                      value.to_i32
+                    when String
+                      value.to_i32?
+                    else
+                      nil
+                    end
+                {% elsif ivar.type.stringify.includes?("Int64") %}
+                  @{{ivar.name}} = case value
+                    when Int64
+                      value
+                    when Int32
+                      value.to_i64
+                    when String
+                      value.to_i64?
+                    else
+                      nil
+                    end
+                {% elsif ivar.type.stringify.includes?("String") %}
+                  @{{ivar.name}} = case value
+                    when String
+                      value
+                    when Nil
+                      nil
+                    else
+                      value.to_s
+                    end
+                {% elsif ivar.type.stringify.includes?("Bool") %}
+                  @{{ivar.name}} = case value
+                    when 1, "1", "true", "t", true
+                      true
+                    when 0, "0", "false", "f", false, nil
+                      false
+                    else
+                      nil
+                    end
+                {% elsif ivar.type.stringify.includes?("Float64") %}
+                  @{{ivar.name}} = case value
+                    when Float64
+                      value
+                    when Int32, Int64
+                      value.to_f64
+                    when String
+                      value.to_f64?
+                    else
+                      nil
+                    end
+                {% elsif ivar.type.stringify.includes?("Time") %}
+                  @{{ivar.name}} = value.is_a?(Time) ? value : nil
+                {% else %}
+                  @{{ivar.name}} = value.as?({{ivar.type}})
+                {% end %}
+            {% end %}
+          {% end %}
+          end
+        {% end %}
+      end
+
+      @persisted = true
+      @changed_attributes.clear
+    end
+
+    # Load from result set with prefixed column names (for join queries)
+    protected def load_from_prefixed_result_set(rs : DB::ResultSet)
+      table_prefix = "#{self.class.table_name.gsub("\"", "")}_"
+
+      rs.column_names.each_with_index do |column_name, index|
+        value = rs.read
+
+        # Only process columns that belong to this table (have the correct prefix)
+        if column_name.starts_with?(table_prefix)
+          # Remove the table prefix to get the actual column name
+          actual_column_name = column_name[table_prefix.size..-1]
+          @attributes[actual_column_name] = value
+        end
       end
 
       # Now set all instance variables from the attributes

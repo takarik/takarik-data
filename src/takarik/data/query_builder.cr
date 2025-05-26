@@ -10,6 +10,7 @@ module Takarik::Data
     @having_clause : String?
     @limit_value : Int32?
     @offset_value : Int32?
+    @has_joins = false
 
     def initialize(@model_class : T.class)
     end
@@ -165,38 +166,46 @@ module Takarik::Data
 
     # Joins with automatic condition generation based on associations
     def join(association_name : String)
+      @has_joins = true
       add_association_join("JOIN", association_name)
     end
 
     def inner_join(association_name : String)
+      @has_joins = true
       add_association_join("INNER JOIN", association_name)
     end
 
     def left_join(association_name : String)
+      @has_joins = true
       add_association_join("LEFT JOIN", association_name)
     end
 
     def right_join(association_name : String)
+      @has_joins = true
       add_association_join("RIGHT JOIN", association_name)
     end
 
     # Manual joins (keep existing functionality)
     def join(table : String, on : String)
+      @has_joins = true
       @joins << "JOIN #{table} ON #{on}"
       self
     end
 
     def left_join(table : String, on : String)
+      @has_joins = true
       @joins << "LEFT JOIN #{table} ON #{on}"
       self
     end
 
     def right_join(table : String, on : String)
+      @has_joins = true
       @joins << "RIGHT JOIN #{table} ON #{on}"
       self
     end
 
     def inner_join(table : String, on : String)
+      @has_joins = true
       @joins << "INNER JOIN #{table} ON #{on}"
       self
     end
@@ -232,6 +241,25 @@ module Takarik::Data
 
       @joins << "#{join_type} #{associated_table} ON #{on_condition}"
       self
+    end
+
+    # Get all column names for the main table with table prefix
+    private def get_prefixed_columns
+      table_name = @model_class.table_name
+      table_name_clean = table_name.gsub("\"", "")
+
+      # Get columns dynamically from the model class
+      columns = @model_class.column_names
+
+      # Fallback to common columns if no columns are defined
+      if columns.empty?
+        columns = ["id", "created_at", "updated_at"]
+      end
+
+      # Generate properly quoted column names with correct alias format
+      # Always quote the table name and column names for consistency
+      quoted_table_name = table_name_clean.starts_with?("\"") ? table_name : "\"#{table_name_clean}\""
+      columns.map { |col| "#{quoted_table_name}.\"#{col}\" AS #{table_name_clean}_#{col}" }.join(", ")
     end
 
     # Ordering
@@ -289,8 +317,13 @@ module Takarik::Data
     def to_sql
       sql_parts = [] of String
 
-      # SELECT clause
-      select_part = @select_clause || "*"
+      # SELECT clause - use prefixed columns when joins are present
+      if @has_joins && @select_clause.nil?
+        # When joins are present and no explicit select, use prefixed columns for main table only
+        select_part = get_prefixed_columns
+      else
+        select_part = @select_clause || "*"
+      end
       sql_parts << "SELECT #{select_part}"
 
       # FROM clause
@@ -340,7 +373,11 @@ module Takarik::Data
       @model_class.connection.query(to_sql, args: @where_params) do |rs|
         rs.each do
           instance = @model_class.new
-          instance.load_from_result_set(rs)
+          if @has_joins
+            instance.load_from_prefixed_result_set(rs)
+          else
+            instance.load_from_result_set(rs)
+          end
           results << instance
         end
       end

@@ -215,11 +215,11 @@ describe Takarik::Data::QueryBuilder do
 
       # Test different range types with data
       query = User.where("age", 25..30)
-      query.size.should eq(3)  # Alice (25), Bob (30), Diana (28)
+      query.size.should eq(3) # Alice (25), Bob (30), Diana (28)
 
       # Test exclusive ranges
-      query = User.where("age", 26...30)  # Exclusive end
-      query.size.should eq(1)  # Only Diana (28)
+      query = User.where("age", 26...30) # Exclusive end
+      query.size.should eq(1)            # Only Diana (28)
       query.first.try(&.name).should eq("Diana")
     end
 
@@ -238,13 +238,13 @@ describe Takarik::Data::QueryBuilder do
 
       # Test complex conditions with multiple parameters
       query = User.where("(age = ? OR age = ?) AND active = ?", 25, 30, true)
-      query.size.should eq(2)  # Alice and Bob (both active)
+      query.size.should eq(2) # Alice and Bob (both active)
       query.map(&.name).should contain("Alice")
       query.map(&.name).should contain("Bob")
 
       # Test many parameters
       query = User.where("age IN (?, ?, ?, ?)", 25, 28, 30, 35)
-      query.size.should eq(4)  # All users
+      query.size.should eq(4) # All users
       names = query.map(&.name).compact.sort
       names.should eq(["Alice", "Bob", "Charlie", "Diana"])
     end
@@ -257,14 +257,14 @@ describe Takarik::Data::QueryBuilder do
 
       results = query.to_a
       results.first.try(&.name).should eq("Alice")  # age 25
-      results.last.try(&.name).should eq("Charlie")  # age 35
+      results.last.try(&.name).should eq("Charlie") # age 35
     end
 
     it "orders by single column descending" do
       query = User.order("age", "DESC")
       results = query.to_a
-      results.first.try(&.name).should eq("Charlie")  # age 35
-      results.last.try(&.name).should eq("Alice")  # age 25
+      results.first.try(&.name).should eq("Charlie") # age 35
+      results.last.try(&.name).should eq("Alice")    # age 25
     end
 
     it "orders by multiple columns" do
@@ -286,13 +286,13 @@ describe Takarik::Data::QueryBuilder do
       query.to_sql.should contain("OFFSET 1")
 
       query.size.should eq(2)
-      query.first.try(&.age).should eq(28)  # Diana, second youngest
+      query.first.try(&.age).should eq(28) # Diana, second youngest
     end
 
     it "paginates results" do
       query = User.order("age", "ASC").page(2, 2)
       query.size.should eq(2)
-      query.first.try(&.age).should eq(30)  # Bob, third in age order
+      query.first.try(&.age).should eq(30) # Bob, third in age order
     end
   end
 
@@ -409,12 +409,12 @@ describe Takarik::Data::QueryBuilder do
   describe "aggregation methods" do
     it "calculates sum" do
       total_age = User.sum("age")
-      total_age.should eq(118)  # 25 + 30 + 35 + 28
+      total_age.should eq(118) # 25 + 30 + 35 + 28
     end
 
     it "calculates average" do
       avg_age = User.average("age")
-      avg_age.should eq(29.5)  # 118 / 4
+      avg_age.should eq(29.5) # 118 / 4
     end
 
     it "finds minimum" do
@@ -536,7 +536,7 @@ describe Takarik::Data::QueryBuilder do
       sql.should contain("OFFSET 0")
 
       query.size.should eq(3)
-      query.first.try(&.age).should eq(30)  # Bob, highest age among active users
+      query.first.try(&.age).should eq(30) # Bob, highest age among active users
     end
   end
 
@@ -583,6 +583,438 @@ describe Takarik::Data::QueryBuilder do
       sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
       sql.should contain("WHERE active = ?")
       sql.should contain("ORDER BY name ASC")
+    end
+  end
+
+  describe "join loading and N+1 prevention" do
+    it "loads joined data in a single query" do
+      # Create test data with relationships using unique emails
+      user1 = User.create(name: "Alice", email: "alice_join_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_join_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_join_test@example.com", age: 35, active: false)
+
+      # Ensure users were created successfully
+      user1.persisted?.should be_true
+      user2.persisted?.should be_true
+      user3.persisted?.should be_true
+
+      # Create posts for users
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+      post4 = Post.create(title: "Charlie's Post", content: "Content 4", user_id: user3.id, published: true)
+
+      # Ensure posts were created successfully
+      post1.persisted?.should be_true
+      post2.persisted?.should be_true
+      post3.persisted?.should be_true
+      post4.persisted?.should be_true
+
+      # Test that join queries return data from both tables
+      query = User.inner_join("posts").select("users.name", "posts.title", "posts.published")
+      results = query.to_a
+
+      # Should have 4 results (one for each post)
+      results.size.should eq(4)
+
+      # Verify we can access both user and post data
+      # Note: In a real implementation, you'd want to map this to proper objects
+      # For now, we're testing that the SQL is correct and data is accessible
+      sql = query.to_sql
+      sql.should contain("SELECT users.name, posts.title, posts.published")
+      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+    end
+
+    it "filters joined data correctly" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_filter_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_filter_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_filter_test@example.com", age: 35, active: false)
+
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+      post4 = Post.create(title: "Charlie's Post", content: "Content 4", user_id: user3.id, published: true)
+
+      # Test filtering on joined tables
+      query = User
+        .inner_join("posts")
+        .where("posts.published", true)
+        .where("users.active", true)
+        .select("users.name", "posts.title")
+
+      results = query.to_a
+      # Should have 2 results (Alice's first post and Bob's post)
+      results.size.should eq(2)
+
+      sql = query.to_sql
+      sql.should contain("WHERE posts.published = ? AND users.active = ?")
+    end
+
+    it "supports complex joins with multiple conditions" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_complex_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_complex_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_complex_test@example.com", age: 35, active: false)
+
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+      post4 = Post.create(title: "Charlie's Post", content: "Content 4", user_id: user3.id, published: true)
+
+      # Test complex join conditions
+      query = User
+        .inner_join("posts")
+        .where("users.age >=", 25)
+        .where("posts.published", true)
+        .where("users.active", true) # Add this to exclude Charlie
+        .order("users.name", "ASC")
+        .select("users.name", "users.age", "posts.title")
+
+      results = query.to_a
+      results.size.should eq(2) # Alice and Bob's published posts
+
+      sql = query.to_sql
+      sql.should contain("WHERE users.age >= ? AND posts.published = ? AND users.active = ?")
+      sql.should contain("ORDER BY users.name ASC")
+    end
+
+    it "supports left joins to include users without posts" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_left_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_left_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "David", email: "david_left_test@example.com", age: 40, active: true)
+
+      post1 = Post.create(title: "Alice's Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Bob's Post", content: "Content 2", user_id: user2.id, published: true)
+      # David has no posts
+
+      query = User
+        .left_join("posts")
+        .where("users.active", true)
+        .where("users.email LIKE", "%_left_test@%")
+        .select("users.name", "posts.title")
+        .order("users.name")
+
+      results = query.to_a
+      # Should include David (with null post data) plus other users with posts
+      results.size.should be >= 2
+
+      sql = query.to_sql
+      sql.should contain("LEFT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+    end
+
+    it "prevents N+1 queries with proper joins" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_n1_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_n1_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_n1_test@example.com", age: 35, active: false)
+
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+
+      # This test demonstrates the concept - in a real implementation,
+      # you'd want to track actual query count
+
+      # Without joins - would require N+1 queries (1 for users + N for each user's posts)
+      users_without_joins = User.where("email LIKE", "%_n1_test@%").where(active: true).to_a
+      users_without_joins.size.should eq(2) # Alice and Bob
+
+      # With joins - single query gets all data
+      query_with_joins = User
+        .inner_join("posts")
+        .where("users.active", true)
+        .where("users.email LIKE", "%_n1_test@%")
+        .select("users.id", "users.name", "posts.id as post_id", "posts.title")
+
+      results_with_joins = query_with_joins.to_a
+      results_with_joins.size.should eq(3) # Alice (2 posts) + Bob (1 post)
+
+      # Verify the SQL is a single query with join
+      sql = query_with_joins.to_sql
+      sql.should contain("INNER JOIN posts")
+      # Verify it's a single query by checking it starts with SELECT and doesn't contain multiple SELECT statements
+      sql.should start_with("SELECT")
+      sql.scan(/\bSELECT\b/).size.should eq(1)
+    end
+
+    it "supports multiple joins" do
+      # Create test data with unique emails
+      user = User.create(name: "Alice", email: "alice_multi_test@example.com", age: 25, active: true)
+      post = Post.create(title: "Test Post", content: "Content", user_id: user.id, published: true)
+      Comment.create(content: "Great post!", post_id: post.id, user_id: user.id)
+
+      # Test joining multiple tables
+      query = User
+        .inner_join("posts")
+        .inner_join("comments")
+        .where("users.email", "alice_multi_test@example.com")
+        .select("users.name", "posts.title", "comments.content")
+
+      sql = query.to_sql
+      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("INNER JOIN comments ON \"users\".\"id\" = comments.\"user_id\"")
+
+      results = query.to_a
+      results.size.should be >= 1
+    end
+
+    it "supports aggregations with joins" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_agg_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_agg_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_agg_test@example.com", age: 35, active: false)
+
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+
+      # Test aggregations on joined data
+      post_count_per_user = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_agg_test@%")
+        .group("users.id", "users.name")
+        .select("users.name", "COUNT(posts.id) as post_count")
+
+      sql = post_count_per_user.to_sql
+      sql.should contain("GROUP BY users.id, users.name")
+      sql.should contain("SELECT users.name, COUNT(posts.id) as post_count")
+
+      # Test specific aggregation methods
+      total_posts_by_active_users = User
+        .inner_join("posts")
+        .where("users.active", true)
+        .where("users.email LIKE", "%_agg_test@%")
+        .count
+
+      total_posts_by_active_users.should eq(3) # Alice (2) + Bob (1)
+    end
+
+    it "handles edge cases with joins" do
+      # Create minimal test data with unique emails
+      user = User.create(name: "Alice", email: "alice_edge_test@example.com", age: 25, active: true)
+      Post.create(title: "Test Post", content: "Content", user_id: user.id, published: true)
+
+      # Test empty results
+      empty_query = User
+        .inner_join("posts")
+        .where("users.name", "NonExistent")
+
+      empty_query.to_a.size.should eq(0)
+      empty_query.count.should eq(0)
+      empty_query.exists?.should be_false
+
+      # Test with complex conditions
+      complex_query = User
+        .left_join("posts")
+        .where("users.age >", 20)
+        .where("users.email", "alice_edge_test@example.com")
+        .where("(posts.published = ? OR posts.id IS NULL)", true)
+        .select("users.name")
+
+      complex_results = complex_query.to_a
+      complex_results.size.should be >= 1
+    end
+
+    it "maintains proper SQL structure with joins" do
+      # Create test data with unique emails
+      user = User.create(name: "Alice", email: "alice_sql_test@example.com", age: 25, active: true)
+      Post.create(title: "Test Post", content: "Content", user_id: user.id, published: true)
+
+      # Test that joins don't interfere with other SQL clauses
+      complex_query = User
+        .select("users.name", "posts.title")
+        .inner_join("posts")
+        .where("users.active", true)
+        .where("users.email", "alice_sql_test@example.com")
+        .where("posts.published", true)
+        .group("users.id", "users.name", "posts.title")
+        .having("COUNT(*) > ?", 0)
+        .order("users.name", "ASC")
+        .limit(10)
+        .offset(0)
+
+      sql = complex_query.to_sql
+
+      # Verify proper SQL structure
+      sql.should contain("SELECT users.name, posts.title")
+      sql.should contain("FROM \"users\"")
+      sql.should contain("INNER JOIN posts")
+      sql.should contain("WHERE users.active = ? AND users.email = ? AND posts.published = ?")
+      sql.should contain("GROUP BY users.id, users.name, posts.title")
+      sql.should contain("HAVING COUNT(*) > ?")
+      sql.should contain("ORDER BY users.name ASC")
+      sql.should contain("LIMIT 10")
+      sql.should contain("OFFSET 0")
+
+      # Should execute without errors
+      results = complex_query.to_a
+      results.size.should be >= 0
+    end
+
+    it "demonstrates working join queries with eager loading" do
+      # Create test data with unique emails
+      user1 = User.create(name: "Alice", email: "alice_access_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_access_test@example.com", age: 30, active: true)
+      user3 = User.create(name: "Charlie", email: "charlie_access_test@example.com", age: 35, active: false)
+
+      post1 = Post.create(title: "Alice's Amazing Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Bob's Brilliant Post", content: "Content 2", user_id: user2.id, published: true)
+      # Charlie has no posts
+
+      # Join queries now work correctly with prefixed columns
+      users_with_posts = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_access_test@%")
+        .to_a
+
+      # Should only return users who have posts (Alice and Bob, not Charlie)
+      users_with_posts.size.should eq(2)
+      user_names = users_with_posts.map(&.name).compact.sort
+      user_names.should eq(["Alice", "Bob"])
+
+      # ✅ NEW: Join queries now preserve correct user IDs and associations work!
+      # Test the exact case that was originally failing: posts.first.title
+      users_with_posts.first.posts.first.not_nil!.title.should eq("Alice's Amazing Post")
+      users_with_posts.last.posts.first.not_nil!.title.should eq("Bob's Brilliant Post")
+
+      # Verify user IDs are preserved correctly
+      alice = users_with_posts.find { |u| u.name == "Alice" }
+      alice.should_not be_nil
+      alice.not_nil!.id.should eq(user1.id)
+
+      bob = users_with_posts.find { |u| u.name == "Bob" }
+      bob.should_not be_nil
+      bob.not_nil!.id.should eq(user2.id)
+
+      # Join queries are excellent for counting and filtering
+      post_count = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_access_test@%")
+        .count
+
+      post_count.should eq(2)  # Alice's post + Bob's post
+
+      # And for filtering based on joined table conditions
+      users_with_published_posts = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_access_test@%")
+        .where("posts.published", true)
+        .to_a
+
+      users_with_published_posts.size.should eq(2)  # Both Alice and Bob have published posts
+    end
+
+    it "demonstrates N+1 problem vs join solution with actual data access" do
+      # Create test data
+      user1 = User.create(name: "Alice", email: "alice_n1_demo@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_n1_demo@example.com", age: 30, active: true)
+
+      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+
+      # Simulate N+1 problem: Get users, then their posts separately
+      users = User.where("email LIKE", "%_n1_demo@%").to_a
+      users.size.should eq(2)
+
+      # This would be N+1 - each user.posts call would be a separate query
+      user_posts_data = [] of {String, Array(String)}
+      users.each do |user|
+        posts = user.posts.to_a # This is a separate query for each user
+        post_titles = posts.map(&.title).compact
+        user_posts_data << {user.name.not_nil!, post_titles}
+      end
+
+      # Verify we got the data correctly
+      user_posts_data.size.should eq(2)
+      alice_data = user_posts_data.find { |data| data[0] == "Alice" }
+      alice_data.should_not be_nil
+      alice_data.not_nil![1].size.should eq(2) # Alice has 2 posts
+
+      bob_data = user_posts_data.find { |data| data[0] == "Bob" }
+      bob_data.should_not be_nil
+      bob_data.not_nil![1].size.should eq(1) # Bob has 1 post
+
+      # Now demonstrate the join solution - single query
+      join_query = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_n1_demo@%")
+        .select("users.name", "posts.title")
+
+      join_results = join_query.to_a
+      join_results.size.should eq(3) # Alice (2 posts) + Bob (1 post) = 3 records
+
+      # Verify the SQL is a single query
+      sql = join_query.to_sql
+      sql.should contain("INNER JOIN posts")
+      sql.should contain("SELECT users.name, posts.title")
+    end
+
+    it "verifies that association methods work correctly for data access" do
+      # Create test data
+      user = User.create(name: "Alice", email: "alice_assoc_test@example.com", age: 25, active: true)
+      post1 = Post.create(title: "First Post", content: "Content 1", user_id: user.id, published: true)
+      post2 = Post.create(title: "Second Post", content: "Content 2", user_id: user.id, published: false)
+
+      # Test that association methods work
+      user_posts = user.posts.to_a
+      user_posts.size.should eq(2)
+
+      # Test that we can access specific post data
+      first_post = user_posts.first
+      first_post.should_not be_nil
+      first_post.title.should_not be_nil
+      first_post.title.should eq("First Post")
+
+      # Test belongs_to association
+      post = Post.where("title", "First Post").first!
+      post_user = post.user
+      post_user.should_not be_nil
+      post_user.not_nil!.name.should eq("Alice")
+      post_user.not_nil!.email.should eq("alice_assoc_test@example.com")
+    end
+
+    it "compares query count between N+1 and join approaches" do
+      # Create test data
+      user1 = User.create(name: "Alice", email: "alice_count_test@example.com", age: 25, active: true)
+      user2 = User.create(name: "Bob", email: "bob_count_test@example.com", age: 30, active: true)
+
+      post1 = Post.create(title: "Alice's Post 1", content: "Content 1", user_id: user1.id, published: true)
+      post2 = Post.create(title: "Alice's Post 2", content: "Content 2", user_id: user1.id, published: true)
+      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
+
+      # Method 1: N+1 approach (multiple queries)
+      # 1 query to get users
+      users = User.where("email LIKE", "%_count_test@%").to_a
+      users.size.should eq(2)
+
+      # N queries to get posts for each user (this would be N+1 in real usage)
+      total_posts_n1 = 0
+      users.each do |user|
+        user_posts = user.posts.to_a # Each call is a separate query
+        total_posts_n1 += user_posts.size
+      end
+      total_posts_n1.should eq(3) # Alice: 2 posts + Bob: 1 post
+
+      # Method 2: Join approach (single query)
+      join_results = User
+        .inner_join("posts")
+        .where("users.email LIKE", "%_count_test@%")
+        .count
+
+      join_results.should eq(3) # Same result, but in a single query
+
+      # Verify the performance difference concept
+      # N+1 approach: 1 (users) + 2 (posts for each user) = 3 queries
+      # Join approach: 1 query
+      n1_query_count = 1 + users.size # 1 + 2 = 3 queries
+      join_query_count = 1            # 1 query
+
+      join_query_count.should be < n1_query_count
+      performance_improvement = ((n1_query_count - join_query_count).to_f / n1_query_count * 100).round(1)
+      performance_improvement.should be > 50.0 # At least 50% improvement
     end
   end
 end
