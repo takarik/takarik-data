@@ -1,12 +1,6 @@
 require "./spec_helper"
 
 describe Takarik::Data::BaseModel do
-  # Ensure User class has the connection
-  before_all do
-    User.establish_connection("sqlite3://./test.db")
-    Post.establish_connection("sqlite3://./test.db")
-  end
-
   describe "basic CRUD operations" do
     it "creates a new record" do
       user = User.new

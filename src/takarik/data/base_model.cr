@@ -1,7 +1,22 @@
 require "db"
 require "json"
+require "./string"
+require "./query_builder"
+require "./validations"
+require "./associations"
 
 module Takarik::Data
+  # Module-level connection variable that's shared across all classes
+  @@connection : DB::Database?
+
+  def self.connection
+    @@connection || raise "Database connection not established. Call Takarik::Data.establish_connection first."
+  end
+
+  def self.establish_connection(database_url : String)
+    @@connection = DB.open(database_url)
+  end
+
   # Forward declaration for QueryBuilder
   class QueryBuilder(T)
   end
@@ -10,9 +25,8 @@ module Takarik::Data
   # but designed specifically for Crystal language features
   abstract class BaseModel
     include JSON::Serializable
-
-    # Class-level configuration
-    @@connection : DB::Database?
+    include Validations
+    include Associations
 
     # Class variable to store column names for each model
     @@column_names = {} of String => Array(String)
@@ -31,6 +45,240 @@ module Takarik::Data
     def self.add_column_name(name : String)
       @@column_names[self.name] ||= [] of String
       @@column_names[self.name] << name unless @@column_names[self.name].includes?(name)
+    end
+
+    # Add query builder methods to the class - make them more direct
+    def self.query
+      QueryBuilder(self).new(self)
+    end
+
+    # Macro to generate where method overloads for BaseModel
+    macro generate_base_model_where_overloads
+      {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time, DB::Any] %}
+        # Variadic parameters overload for {{type}}
+        def self.where(condition : String, *params : {{type}})
+          query.where(condition, *params)
+        end
+
+        # Array overload for {{type}}
+        def self.where(column : String, values : Array({{type}}))
+          query.where(column, values)
+        end
+
+        # Column with operator overload for {{type}}
+        def self.where(column_with_operator : String, value : {{type}})
+          query.where(column_with_operator, value)
+        end
+
+        # where_not array overload for {{type}}
+        def self.where_not(column : String, values : Array({{type}}))
+          query.where_not(column, values)
+        end
+      {% end %}
+
+      # Range overloads
+      {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
+        def self.where(column : String, range : Range({{type}}, {{type}}))
+          query.where(column, range)
+        end
+      {% end %}
+    end
+
+    # Generate all the where method overloads for BaseModel
+    generate_base_model_where_overloads
+
+    # Chainable query methods - return QueryBuilder for chaining
+    def self.where_not(**conditions)
+      query.where_not(**conditions)
+    end
+
+    def self.select(*columns : String)
+      query.select(*columns)
+    end
+
+    def self.select(columns : Array(String))
+      query.select(columns)
+    end
+
+    def self.order(column : String, direction : String = "ASC")
+      query.order(column, direction)
+    end
+
+    def self.order(**columns)
+      query.order(**columns)
+    end
+
+    def self.limit(count : Int32)
+      query.limit(count)
+    end
+
+    def self.offset(count : Int32)
+      query.offset(count)
+    end
+
+    def self.joins(table : String, on : String)
+      query.join(table, on)
+    end
+
+    def self.joins(association_name : String)
+      query.join(association_name)
+    end
+
+    def self.inner_join(table : String, on : String)
+      query.inner_join(table, on)
+    end
+
+    def self.inner_join(association_name : String)
+      query.inner_join(association_name)
+    end
+
+    def self.left_join(table : String, on : String)
+      query.left_join(table, on)
+    end
+
+    def self.left_join(association_name : String)
+      query.left_join(association_name)
+    end
+
+    def self.right_join(table : String, on : String)
+      query.right_join(table, on)
+    end
+
+    def self.right_join(association_name : String)
+      query.right_join(association_name)
+    end
+
+    def self.group(*columns : String)
+      query.group(*columns)
+    end
+
+    def self.having(condition : String, *params : DB::Any)
+      query.having(condition, *params)
+    end
+
+    def self.page(page_number : Int32, per_page : Int32)
+      query.page(page_number, per_page)
+    end
+
+    # Aggregation methods
+    def self.sum(column : String)
+      query.sum(column)
+    end
+
+    def self.average(column : String)
+      query.average(column)
+    end
+
+    def self.minimum(column : String)
+      query.minimum(column)
+    end
+
+    def self.maximum(column : String)
+      query.maximum(column)
+    end
+
+    # Scopes support - now returns QueryBuilder for chaining
+    macro scope(name, &block)
+      def self.{{name.id}}
+        {{block.body}}
+      end
+    end
+
+    # Callbacks support
+    macro before_save(&block)
+      def before_save_callback
+        {{block.body}}
+      end
+    end
+
+    macro after_save(&block)
+      def after_save_callback
+        {{block.body}}
+      end
+    end
+
+    macro before_create(&block)
+      def before_create_callback
+        {{block.body}}
+      end
+
+      private def insert_record
+        before_create_callback if new_record?
+        super
+      end
+    end
+
+    macro after_create(&block)
+      def after_create_callback
+        {{block.body}}
+      end
+
+      private def insert_record
+        result = super
+        after_create_callback if result && new_record?
+        result
+      end
+    end
+
+    macro before_update(&block)
+      def before_update_callback
+        {{block.body}}
+      end
+
+      private def update_record
+        before_update_callback unless new_record?
+        super
+      end
+    end
+
+    macro after_update(&block)
+      def after_update_callback
+        {{block.body}}
+      end
+
+      private def update_record
+        result = super
+        after_update_callback if result && !new_record?
+        result
+      end
+    end
+
+    macro before_destroy(&block)
+      def before_destroy_callback
+        {{block.body}}
+      end
+
+      def destroy
+        before_destroy_callback
+        super
+      end
+    end
+
+    macro after_destroy(&block)
+      def after_destroy_callback
+        {{block.body}}
+      end
+
+      def destroy
+        result = super
+        after_destroy_callback if result
+        result
+      end
+    end
+
+    # Timestamps support
+    macro timestamps
+      column created_at, Time
+      column updated_at, Time
+
+      before_create do
+        self.created_at = Time.utc
+        self.updated_at = Time.utc
+      end
+
+      before_update do
+        self.updated_at = Time.utc
+      end
     end
 
     # Macro to define the primary key column
@@ -239,12 +487,8 @@ module Takarik::Data
     end
 
     # Class methods for database operations
-    def self.establish_connection(database_url : String)
-      @@connection = DB.open(database_url)
-    end
-
     def self.connection
-      @@connection || raise "Database connection not established. Call establish_connection first."
+      Takarik::Data.connection
     end
 
     def self.table_name

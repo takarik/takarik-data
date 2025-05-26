@@ -2,21 +2,21 @@ require "./spec_helper"
 require "./base_model_spec"
 require "./query_builder_spec"
 
-describe TakarikData do
+describe Takarik::Data do
   it "has correct version" do
-    TakarikData::VERSION.should eq("0.1.0")
+    Takarik::Data::VERSION.should eq("0.1.0")
   end
 
   it "provides BaseModel alias" do
-    TakarikData::BaseModel.should eq(Takarik::Data::BaseModel)
+    Takarik::Data::BaseModel.should eq(Takarik::Data::BaseModel)
   end
 
   it "provides Migration alias" do
-    TakarikData::Migration.should eq(Takarik::Data::Migration)
+    Takarik::Data::Migration.should eq(Takarik::Data::Migration)
   end
 
   it "provides QueryBuilder alias" do
-    TakarikData::QueryBuilder.should eq(Takarik::Data::QueryBuilder)
+    Takarik::Data::QueryBuilder.should eq(Takarik::Data::QueryBuilder)
   end
 
   describe "string extensions" do

@@ -3,10 +3,10 @@ require "../src/takarik-data"
 require "sqlite3"
 
 # Set up test database
-Takarik::Data::BaseModel.establish_connection("sqlite3://./test.db")
+Takarik::Data.establish_connection("sqlite3://./test.db")
 
 # Create test tables
-Takarik::Data::BaseModel.connection.exec <<-SQL
+Takarik::Data.connection.exec <<-SQL
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255),
@@ -18,7 +18,7 @@ Takarik::Data::BaseModel.connection.exec <<-SQL
   )
 SQL
 
-Takarik::Data::BaseModel.connection.exec <<-SQL
+Takarik::Data.connection.exec <<-SQL
   CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title VARCHAR(255),
@@ -30,7 +30,7 @@ Takarik::Data::BaseModel.connection.exec <<-SQL
   )
 SQL
 
-Takarik::Data::BaseModel.connection.exec <<-SQL
+Takarik::Data.connection.exec <<-SQL
   CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     content TEXT,
@@ -124,14 +124,9 @@ class Comment < Takarik::Data::BaseModel
   timestamps
 end
 
-# Establish connections for all model classes
-User.establish_connection("sqlite3://./test.db")
-Post.establish_connection("sqlite3://./test.db")
-Comment.establish_connection("sqlite3://./test.db")
-
 # Clean up before each test
 Spec.before_each do
-  Takarik::Data::BaseModel.connection.exec("DELETE FROM comments")
-  Takarik::Data::BaseModel.connection.exec("DELETE FROM posts")
-  Takarik::Data::BaseModel.connection.exec("DELETE FROM users")
+  Takarik::Data.connection.exec("DELETE FROM comments")
+  Takarik::Data.connection.exec("DELETE FROM posts")
+  Takarik::Data.connection.exec("DELETE FROM users")
 end

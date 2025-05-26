@@ -36,10 +36,10 @@ dependencies:
 ```crystal
 require "takarik-data"
 
-# Connect to your database
-Takarik::Data::BaseModel.establish_connection("postgresql://user:password@localhost/mydb")
-# or for SQLite
-# Takarik::Data::BaseModel.establish_connection("sqlite3://./database.db")
+# Establish database connection
+Takarik::Data.establish_connection("postgresql://user:password@localhost/mydb")
+# or
+# Takarik::Data.establish_connection("sqlite3://./database.db")
 ```
 
 ### 2. Define Your Models

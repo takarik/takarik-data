@@ -1,13 +1,10 @@
-require "./takarik/data"
+require "./takarik/data/string"
+require "./takarik/data/validations"
+require "./takarik/data/associations"
+require "./takarik/data/query_builder"
+require "./takarik/data/base_model"
+require "./takarik/data/migration"
 
-# Main module for the Takarik Data ORM library
-module TakarikData
-  VERSION = Takarik::Data::VERSION
-
-  # Convenience alias for the main BaseModel class
-  alias BaseModel = Takarik::Data::BaseModel
-  alias Migration = Takarik::Data::Migration
-  alias QueryBuilder = Takarik::Data::QueryBuilder
-
-  # TODO: Put your code here
+module Takarik::Data
+  VERSION = "0.1.0"
 end

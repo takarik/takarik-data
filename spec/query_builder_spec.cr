@@ -1,12 +1,6 @@
 require "./spec_helper"
 
 describe Takarik::Data::QueryBuilder do
-  # Ensure User class has the connection
-  before_all do
-    User.establish_connection("sqlite3://./test.db")
-    Post.establish_connection("sqlite3://./test.db")
-  end
-
   before_each do
     User.create(name: "Alice", email: "alice@example.com", age: 25, active: true)
     User.create(name: "Bob", email: "bob@example.com", age: 30, active: true)
