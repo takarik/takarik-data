@@ -82,6 +82,30 @@ module Takarik::Data
       query.where(column, values)
     end
 
+    # Convenient overloads for common array types
+    def self.where(column : String, values : Array(Int32))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, values : Array(Int64))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, values : Array(String))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, values : Array(Float32))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, values : Array(Float64))
+      query.where(column, values)
+    end
+
+    def self.where(column : String, values : Array(Bool))
+      query.where(column, values)
+    end
 
     def self.where(column : String, range : Range(Int32, Int32))
       query.where(column, range)
@@ -116,6 +140,31 @@ module Takarik::Data
     end
 
     def self.where_not(column : String, values : Array(DB::Any))
+      query.where_not(column, values)
+    end
+
+    # Convenient overloads for common array types
+    def self.where_not(column : String, values : Array(Int32))
+      query.where_not(column, values)
+    end
+
+    def self.where_not(column : String, values : Array(Int64))
+      query.where_not(column, values)
+    end
+
+    def self.where_not(column : String, values : Array(String))
+      query.where_not(column, values)
+    end
+
+    def self.where_not(column : String, values : Array(Float32))
+      query.where_not(column, values)
+    end
+
+    def self.where_not(column : String, values : Array(Float64))
+      query.where_not(column, values)
+    end
+
+    def self.where_not(column : String, values : Array(Bool))
       query.where_not(column, values)
     end
 

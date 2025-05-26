@@ -167,6 +167,31 @@ module Takarik::Data
       self
     end
 
+    # Convenient overloads for common array types
+    def where_not(column : String, values : Array(Int32))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
+    def where_not(column : String, values : Array(Int64))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
+    def where_not(column : String, values : Array(String))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
+    def where_not(column : String, values : Array(Float32))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
+    def where_not(column : String, values : Array(Float64))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
+    def where_not(column : String, values : Array(Bool))
+      where_not(column, values.map(&.as(DB::Any)))
+    end
+
     # Joins
     def join(table : String, on : String)
       @joins << "JOIN #{table} ON #{on}"
@@ -505,6 +530,31 @@ module Takarik::Data
       @where_conditions << "#{column} IN (#{placeholders})"
       @where_params.concat(values)
       self
+    end
+
+    # Convenient overloads for common array types
+    def where(column : String, values : Array(Int32))
+      where(column, values.map(&.as(DB::Any)))
+    end
+
+    def where(column : String, values : Array(Int64))
+      where(column, values.map(&.as(DB::Any)))
+    end
+
+    def where(column : String, values : Array(String))
+      where(column, values.map(&.as(DB::Any)))
+    end
+
+    def where(column : String, values : Array(Float32))
+      where(column, values.map(&.as(DB::Any)))
+    end
+
+    def where(column : String, values : Array(Float64))
+      where(column, values.map(&.as(DB::Any)))
+    end
+
+    def where(column : String, values : Array(Bool))
+      where(column, values.map(&.as(DB::Any)))
     end
   end
 end

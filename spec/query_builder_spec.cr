@@ -49,13 +49,35 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds IN queries" do
-      query = User.where("age", [25, 30].map(&.as(DB::Any)))
+      query = User.where("age", [25, 30])
       query.to_sql.should contain("WHERE age IN (?, ?)")
     end
 
     it "builds NOT IN queries" do
-      query = User.where_not("age", [25].map(&.as(DB::Any)))
+      query = User.where_not("age", [25])
       query.to_sql.should contain("WHERE age NOT IN (?)")
+    end
+
+    it "supports different array types for IN queries" do
+      # Integer arrays
+      query = User.where("age", [25, 30, 35])
+      query.to_sql.should contain("WHERE age IN (?, ?, ?)")
+
+      # String arrays
+      query = User.where("name", ["Alice", "Bob"])
+      query.to_sql.should contain("WHERE name IN (?, ?)")
+
+      # Boolean arrays
+      query = User.where("active", [true, false])
+      query.to_sql.should contain("WHERE active IN (?, ?)")
+
+      # Float arrays
+      query = User.where("score", [85.5, 92.3])
+      query.to_sql.should contain("WHERE score IN (?, ?)")
+
+      # NOT IN with different types
+      query = User.where_not("name", ["Charlie"])
+      query.to_sql.should contain("WHERE name NOT IN (?)")
     end
 
     it "builds LIKE queries" do
@@ -119,7 +141,7 @@ describe Takarik::Data::QueryBuilder do
 
     it "executes enhanced where queries with data" do
       # Test IN queries
-      query = User.where("age", [25, 30].map(&.as(DB::Any)))
+      query = User.where("age", [25, 30])
       query.size.should eq(2)
       query.map(&.name).should contain("Alice")
       query.map(&.name).should contain("Bob")
