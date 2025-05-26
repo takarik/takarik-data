@@ -34,7 +34,7 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds where queries with string conditions" do
-      query = User.where("age > ?", 28.as(DB::Any))
+      query = User.where("age > ?", 28)
       query.to_sql.should contain("WHERE age > ?")
 
       results = query.to_a
@@ -126,17 +126,43 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds comparison queries" do
-      query = User.where("age >", 28.as(DB::Any))
+      query = User.where("age >", 28)
       query.to_sql.should contain("WHERE age > ?")
 
-      query = User.where("age >=", 28.as(DB::Any))
+      query = User.where("age >=", 28)
       query.to_sql.should contain("WHERE age >= ?")
 
-      query = User.where("age <", 30.as(DB::Any))
+      query = User.where("age <", 30)
       query.to_sql.should contain("WHERE age < ?")
 
-      query = User.where("age <=", 30.as(DB::Any))
+      query = User.where("age <=", 30)
       query.to_sql.should contain("WHERE age <= ?")
+    end
+
+    it "supports different parameter types for raw SQL" do
+      # Integer parameters
+      query = User.where("age > ?", 25)
+      query.to_sql.should contain("WHERE age > ?")
+
+      # String parameters
+      query = User.where("name LIKE ?", "A%")
+      query.to_sql.should contain("WHERE name LIKE ?")
+
+      # Boolean parameters
+      query = User.where("active = ?", true)
+      query.to_sql.should contain("WHERE active = ?")
+
+      # Float parameters
+      query = User.where("score >= ?", 85.5)
+      query.to_sql.should contain("WHERE score >= ?")
+
+      # Multiple parameters
+      query = User.where("age BETWEEN ? AND ?", 25, 35)
+      query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
+
+      # Mixed parameter types
+      query = User.where("name = ? AND active = ?", "Alice", true)
+      query.to_sql.should contain("WHERE name = ? AND active = ?")
     end
 
     it "executes enhanced where queries with data" do
@@ -147,7 +173,7 @@ describe Takarik::Data::QueryBuilder do
       query.map(&.name).should contain("Bob")
 
       # Test comparison queries
-      query = User.where("age >", 28.as(DB::Any))
+      query = User.where("age >", 28)
       query.size.should eq(2)
 
       # Test LIKE queries
@@ -242,7 +268,7 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "adds having clause" do
-      query = User.group("active").having("COUNT(*) > ?", 1.as(DB::Any))
+      query = User.group("active").having("COUNT(*) > ?", 1)
       query.to_sql.should contain("HAVING COUNT(*) > ?")
     end
   end
@@ -377,7 +403,7 @@ describe Takarik::Data::QueryBuilder do
     it "chains multiple conditions" do
       query = User
         .where(active: true)
-        .where("age >=", 25.as(DB::Any))
+        .where("age >=", 25)
         .order("age", "ASC")
         .limit(2)
 
@@ -420,7 +446,7 @@ describe Takarik::Data::QueryBuilder do
       # Test complex chaining
       complex_query = User
         .where(active: true)
-        .where("age >=", 25.as(DB::Any))
+        .where("age >=", 25)
         .order("name")
         .limit(5)
 
@@ -432,7 +458,7 @@ describe Takarik::Data::QueryBuilder do
     it "chains multiple where conditions" do
       query = User
         .where(active: true)
-        .where("age >=", 25.as(DB::Any))
+        .where("age >=", 25)
         .where("name LIKE", "A%")
 
       query.to_sql.should contain("WHERE active = ? AND age >= ? AND name LIKE ?")
@@ -444,7 +470,7 @@ describe Takarik::Data::QueryBuilder do
       query = User
         .select("users.name", "users.age")
         .where(active: true)
-        .where("age >=", 25.as(DB::Any))
+        .where("age >=", 25)
         .order("age", "DESC")
         .limit(10)
         .offset(0)

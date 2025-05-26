@@ -54,6 +54,68 @@ module Takarik::Data
       self
     end
 
+    # Convenient overloads for raw SQL conditions with common types
+    def where(condition : String, param : Int32)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : Int64)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : String)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : Float32)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : Float64)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : Bool)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param : Time)
+      @where_conditions << condition
+      @where_params << param.as(DB::Any)
+      self
+    end
+
+    # Multiple parameters with common types
+    def where(condition : String, param1 : Int32, param2 : Int32)
+      @where_conditions << condition
+      @where_params << param1.as(DB::Any) << param2.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param1 : String, param2 : String)
+      @where_conditions << condition
+      @where_params << param1.as(DB::Any) << param2.as(DB::Any)
+      self
+    end
+
+    def where(condition : String, param1 : String, param2 : Bool)
+      @where_conditions << condition
+      @where_params << param1.as(DB::Any) << param2.as(DB::Any)
+      self
+    end
+
     # Enhanced where with operator support
     def where(column_with_operator : String, value : DB::Any)
       if column_with_operator.includes?("?")
@@ -76,6 +138,104 @@ module Takarik::Data
       self
     end
 
+    # Convenient overloads for column with operator
+    def where(column_with_operator : String, value : Int32)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : Int64)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : String)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : Float32)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : Float64)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : Bool)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
+
+    def where(column_with_operator : String, value : Time)
+      if column_with_operator.includes?("?")
+        @where_conditions << column_with_operator
+        @where_params << value.as(DB::Any)
+      elsif column_with_operator.includes?(" ")
+        @where_conditions << "#{column_with_operator} ?"
+        @where_params << value.as(DB::Any)
+      else
+        @where_conditions << "#{column_with_operator} = ?"
+        @where_params << value.as(DB::Any)
+      end
+      self
+    end
 
     # Handle BETWEEN with Range - support multiple numeric types
     def where(column : String, range : Range(Int32, Int32))

@@ -108,7 +108,7 @@ describe TakarikData do
         .where(active: true)
         .inner_join("posts", "posts.user_id = users.id")
         .group("users.id")
-        .having("COUNT(posts.id) > ?", 0.as(DB::Any))
+        .having("COUNT(posts.id) > ?", 0)
         .to_a
 
       active_users_with_posts.size.should eq(1)

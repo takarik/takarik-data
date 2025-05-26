@@ -67,7 +67,7 @@ class User < Takarik::Data::BaseModel
   end
 
   scope :adults do
-    where("age >=", 18.as(DB::Any))
+    where("age >=", 18)
   end
 
   before_save do

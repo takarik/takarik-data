@@ -74,7 +74,78 @@ module Takarik::Data
       query.where(condition, *params)
     end
 
+    # Convenient overloads for raw SQL conditions with common types
+    def self.where(condition : String, param : Int32)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : Int64)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : String)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : Float32)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : Float64)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : Bool)
+      query.where(condition, param)
+    end
+
+    def self.where(condition : String, param : Time)
+      query.where(condition, param)
+    end
+
+    # Multiple parameters with common types
+    def self.where(condition : String, param1 : Int32, param2 : Int32)
+      query.where(condition, param1, param2)
+    end
+
+    def self.where(condition : String, param1 : String, param2 : String)
+      query.where(condition, param1, param2)
+    end
+
+    def self.where(condition : String, param1 : String, param2 : Bool)
+      query.where(condition, param1, param2)
+    end
+
     def self.where(column_with_operator : String, value : DB::Any)
+      query.where(column_with_operator, value)
+    end
+
+    # Convenient overloads for column with operator
+    def self.where(column_with_operator : String, value : Int32)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : Int64)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : String)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : Float32)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : Float64)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : Bool)
+      query.where(column_with_operator, value)
+    end
+
+    def self.where(column_with_operator : String, value : Time)
       query.where(column_with_operator, value)
     end
 
