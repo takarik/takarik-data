@@ -116,6 +116,35 @@ module Takarik::Data
       query.where(condition, param1, param2)
     end
 
+    # Variadic parameters for unlimited parameter support
+    def self.where(condition : String, *params : Int32)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : Int64)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : String)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : Float32)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : Float64)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : Bool)
+      query.where(condition, *params)
+    end
+
+    def self.where(condition : String, *params : Time)
+      query.where(condition, *params)
+    end
+
     def self.where(column_with_operator : String, value : DB::Any)
       query.where(column_with_operator, value)
     end

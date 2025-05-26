@@ -165,6 +165,32 @@ describe Takarik::Data::QueryBuilder do
       query.to_sql.should contain("WHERE name = ? AND active = ?")
     end
 
+    it "supports variadic parameters for unlimited parameter count" do
+      # Multiple integer parameters
+      query = User.where("age IN (?, ?, ?)", 25, 30, 35)
+      query.to_sql.should contain("WHERE age IN (?, ?, ?)")
+
+      # Multiple string parameters
+      query = User.where("name IN (?, ?, ?, ?)", "Alice", "Bob", "Charlie", "Diana")
+      query.to_sql.should contain("WHERE name IN (?, ?, ?, ?)")
+
+      # Complex conditions with many parameters
+      query = User.where("(age = ? OR age = ?) AND (name = ? OR name = ? OR name = ?)", 25, 30, "Alice", "Bob", "Charlie")
+      query.to_sql.should contain("WHERE (age = ? OR age = ?) AND (name = ? OR name = ? OR name = ?)")
+
+      # Boolean parameters
+      query = User.where("active IN (?, ?)", true, false)
+      query.to_sql.should contain("WHERE active IN (?, ?)")
+
+      # Float parameters
+      query = User.where("score IN (?, ?, ?)", 85.5, 90.0, 95.5)
+      query.to_sql.should contain("WHERE score IN (?, ?, ?)")
+
+      # Many parameters (testing scalability)
+      query = User.where("id IN (?, ?, ?, ?, ?, ?, ?, ?)", 1, 2, 3, 4, 5, 6, 7, 8)
+      query.to_sql.should contain("WHERE id IN (?, ?, ?, ?, ?, ?, ?, ?)")
+    end
+
     it "executes enhanced where queries with data" do
       # Test IN queries
       query = User.where("age", [25, 30])
@@ -195,6 +221,32 @@ describe Takarik::Data::QueryBuilder do
       query = User.where("age", 26...30)  # Exclusive end
       query.size.should eq(1)  # Only Diana (28)
       query.first.try(&.name).should eq("Diana")
+    end
+
+    it "executes variadic parameter queries with data" do
+      # Test multiple integer parameters
+      query = User.where("age IN (?, ?)", 25, 30)
+      query.size.should eq(2)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Bob")
+
+      # Test multiple string parameters
+      query = User.where("name IN (?, ?)", "Alice", "Charlie")
+      query.size.should eq(2)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Charlie")
+
+      # Test complex conditions with multiple parameters
+      query = User.where("(age = ? OR age = ?) AND active = ?", 25, 30, true)
+      query.size.should eq(2)  # Alice and Bob (both active)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Bob")
+
+      # Test many parameters
+      query = User.where("age IN (?, ?, ?, ?)", 25, 28, 30, 35)
+      query.size.should eq(4)  # All users
+      names = query.map(&.name).compact.sort
+      names.should eq(["Alice", "Bob", "Charlie", "Diana"])
     end
   end
 

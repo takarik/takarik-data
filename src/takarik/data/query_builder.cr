@@ -116,6 +116,49 @@ module Takarik::Data
       self
     end
 
+    # Variadic parameters for unlimited parameter support
+    def where(condition : String, *params : Int32)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : Int64)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : String)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : Float32)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : Float64)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : Bool)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
+    def where(condition : String, *params : Time)
+      @where_conditions << condition
+      params.each { |param| @where_params << param.as(DB::Any) }
+      self
+    end
+
     # Enhanced where with operator support
     def where(column_with_operator : String, value : DB::Any)
       if column_with_operator.includes?("?")
