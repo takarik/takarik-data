@@ -7,8 +7,8 @@ require "./data/query_builder"
 class String
   def underscore
     self.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
-        .gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
-        .downcase
+      .gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+      .downcase
   end
 
   def camelcase
@@ -70,203 +70,44 @@ module Takarik::Data
       query.where(**conditions)
     end
 
-    def self.where(condition : String, *params : DB::Any)
-      query.where(condition, *params)
-    end
-
-    # Convenient overloads for raw SQL conditions with common types
-    def self.where(condition : String, param : Int32)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : Int64)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : String)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : Float32)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : Float64)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : Bool)
-      query.where(condition, param)
-    end
-
-    def self.where(condition : String, param : Time)
-      query.where(condition, param)
-    end
-
-    # Multiple parameters with common types
-    def self.where(condition : String, param1 : Int32, param2 : Int32)
-      query.where(condition, param1, param2)
-    end
-
-    def self.where(condition : String, param1 : String, param2 : String)
-      query.where(condition, param1, param2)
-    end
-
-    def self.where(condition : String, param1 : String, param2 : Bool)
-      query.where(condition, param1, param2)
-    end
-
-    # Variadic parameters for unlimited parameter support
-    def self.where(condition : String, *params : Int32)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : Int64)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : String)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : Float32)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : Float64)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : Bool)
-      query.where(condition, *params)
-    end
-
-    def self.where(condition : String, *params : Time)
-      query.where(condition, *params)
-    end
-
-    def self.where(column_with_operator : String, value : DB::Any)
-      query.where(column_with_operator, value)
-    end
-
-    # Convenient overloads for column with operator
-    def self.where(column_with_operator : String, value : Int32)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : Int64)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : String)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : Float32)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : Float64)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : Bool)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column_with_operator : String, value : Time)
-      query.where(column_with_operator, value)
-    end
-
-    def self.where(column : String, values : Array(DB::Any))
-      query.where(column, values)
-    end
-
-    # Convenient overloads for common array types
-    def self.where(column : String, values : Array(Int32))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, values : Array(Int64))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, values : Array(String))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, values : Array(Float32))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, values : Array(Float64))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, values : Array(Bool))
-      query.where(column, values)
-    end
-
-    def self.where(column : String, range : Range(Int32, Int32))
-      query.where(column, range)
-    end
-
-    def self.where(column : String, range : Range(Int64, Int64))
-      query.where(column, range)
-    end
-
-    def self.where(column : String, range : Range(Float32, Float32))
-      query.where(column, range)
-    end
-
-    def self.where(column : String, range : Range(Float64, Float64))
-      query.where(column, range)
-    end
-
-    def self.where(column : String, range : Range(Time, Time))
-      query.where(column, range)
-    end
-
-    def self.where(column : String, range : Range(String, String))
-      query.where(column, range)
-    end
-
-    def self.where_not(conditions : Hash(String, DB::Any))
-      query.where_not(conditions)
-    end
-
     def self.where_not(**conditions)
       query.where_not(**conditions)
     end
 
-    def self.where_not(column : String, values : Array(DB::Any))
-      query.where_not(column, values)
+    # Macro to generate where method overloads for BaseModel
+    macro generate_base_model_where_overloads
+      {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time, DB::Any] %}
+        # Variadic parameters overload for {{type}}
+        def self.where(condition : String, *params : {{type}})
+          query.where(condition, *params)
+        end
+
+        # Array overload for {{type}}
+        def self.where(column : String, values : Array({{type}}))
+          query.where(column, values)
+        end
+
+        # Column with operator overload for {{type}}
+        def self.where(column_with_operator : String, value : {{type}})
+          query.where(column_with_operator, value)
+        end
+
+        # where_not array overload for {{type}}
+        def self.where_not(column : String, values : Array({{type}}))
+          query.where_not(column, values)
+        end
+      {% end %}
+
+      # Range overloads
+      {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
+        def self.where(column : String, range : Range({{type}}, {{type}}))
+          query.where(column, range)
+        end
+      {% end %}
     end
 
-    # Convenient overloads for common array types
-    def self.where_not(column : String, values : Array(Int32))
-      query.where_not(column, values)
-    end
-
-    def self.where_not(column : String, values : Array(Int64))
-      query.where_not(column, values)
-    end
-
-    def self.where_not(column : String, values : Array(String))
-      query.where_not(column, values)
-    end
-
-    def self.where_not(column : String, values : Array(Float32))
-      query.where_not(column, values)
-    end
-
-    def self.where_not(column : String, values : Array(Float64))
-      query.where_not(column, values)
-    end
-
-    def self.where_not(column : String, values : Array(Bool))
-      query.where_not(column, values)
-    end
+    # Generate all the where method overloads for BaseModel
+    generate_base_model_where_overloads
 
     def self.select(*columns : String)
       query.select(*columns)
