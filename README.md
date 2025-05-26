@@ -152,6 +152,11 @@ average_age = User.average("age")
 oldest_user_age = User.maximum("age")
 
 # Joins
+# Automatic joins using associations (recommended)
+posts_with_users = Post.inner_join("user").to_a
+users_with_posts = User.left_join("posts").to_a
+
+# Manual joins (still supported)
 posts_with_users = Post
   .joins("users", "users.id = posts.user_id")
   .select("posts.*, users.name as user_name")
@@ -243,6 +248,39 @@ end
 ```
 
 ## Advanced Features
+
+### Automatic Joins
+
+Takarik::Data automatically generates join conditions based on your model associations using [Wordsmith](https://github.com/luckyframework/wordsmith) for proper pluralization:
+
+```crystal
+# Instead of writing manual join conditions
+User.inner_join("posts", "posts.user_id = users.id")
+
+# You can simply use association names
+User.inner_join("posts")  # Automatically generates: users.id = posts.user_id
+Post.inner_join("user")   # Automatically generates: posts.user_id = users.id
+
+# Supports all join types
+User.left_join("posts")
+User.right_join("posts")
+User.inner_join("posts")
+
+# Chainable with other query methods
+active_users_with_posts = User
+  .inner_join("posts")
+  .where(active: true)
+  .where("posts.published", true)
+  .order("users.name")
+  .to_a
+
+# Works with complex associations
+User.inner_join("comments")  # users.id = comments.user_id
+Post.inner_join("comments")  # posts.id = comments.post_id
+
+# Manual joins still supported for custom conditions
+User.inner_join("posts", "posts.user_id = users.id AND posts.published = 1")
+```
 
 ### Soft Delete
 

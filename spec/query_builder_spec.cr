@@ -539,4 +539,50 @@ describe Takarik::Data::QueryBuilder do
       query.first.try(&.age).should eq(30)  # Bob, highest age among active users
     end
   end
+
+  describe "automatic joins" do
+    it "generates correct join condition for belongs_to association" do
+      # Post belongs_to :user
+      query = Post.inner_join("user")
+      sql = query.to_sql
+      sql.should contain("INNER JOIN users ON \"posts\".\"user_id\" = users.\"id\"")
+    end
+
+    it "generates correct join condition for has_many association" do
+      # User has_many :posts
+      query = User.inner_join("posts")
+      sql = query.to_sql
+      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+    end
+
+    it "supports different join types with associations" do
+      query = User.left_join("posts")
+      sql = query.to_sql
+      sql.should contain("LEFT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+
+      query = User.right_join("posts")
+      sql = query.to_sql
+      sql.should contain("RIGHT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+    end
+
+    it "raises error for non-existent association" do
+      expect_raises(Exception, /Association 'nonexistent' not found/) do
+        User.inner_join("nonexistent").to_sql
+      end
+    end
+
+    it "still supports manual joins with table and condition" do
+      query = User.inner_join("posts", "posts.user_id = users.id")
+      sql = query.to_sql
+      sql.should contain("INNER JOIN posts ON posts.user_id = users.id")
+    end
+
+    it "can chain automatic joins with other query methods" do
+      query = User.inner_join("posts").where(active: true).order("name")
+      sql = query.to_sql
+      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("WHERE active = ?")
+      sql.should contain("ORDER BY name ASC")
+    end
+  end
 end

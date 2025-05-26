@@ -2,49 +2,24 @@ require "./data/base_model"
 require "./data/validations"
 require "./data/associations"
 require "./data/query_builder"
+require "wordsmith"
 
-# String extensions for inflection
+# String extensions for inflection using Wordsmith
 class String
   def underscore
-    self.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
-      .gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
-      .downcase
+    Wordsmith::Inflector.underscore(self)
   end
 
   def camelcase
-    self.split('_').map(&.capitalize).join
+    Wordsmith::Inflector.camelize(self)
   end
 
   def pluralize
-    # Simple pluralization rules - in a real implementation you'd want a more robust solution
-    case self
-    when .ends_with?("y")
-      self[0..-2] + "ies"
-    when .ends_with?("s"), .ends_with?("sh"), .ends_with?("ch"), .ends_with?("x"), .ends_with?("z")
-      self + "es"
-    else
-      self + "s"
-    end
+    Wordsmith::Inflector.pluralize(self)
   end
 
   def singularize
-    # Simple singularization rules
-    case self
-    when .ends_with?("ies")
-      self[0..-4] + "y"
-    when .ends_with?("es")
-      if self.ends_with?("ses") || self.ends_with?("shes") || self.ends_with?("ches") || self.ends_with?("xes") || self.ends_with?("zes")
-        self[0..-3]
-      else
-        self[0..-2]
-      end
-    else
-      if (self.ends_with?("s") && !self.ends_with?("ss"))
-        self[0..-2]
-      else
-        self
-      end
-    end
+    Wordsmith::Inflector.singularize(self)
   end
 end
 
@@ -137,16 +112,32 @@ module Takarik::Data
       query.join(table, on)
     end
 
+    def self.joins(association_name : String)
+      query.join(association_name)
+    end
+
     def self.inner_join(table : String, on : String)
       query.inner_join(table, on)
+    end
+
+    def self.inner_join(association_name : String)
+      query.inner_join(association_name)
     end
 
     def self.left_join(table : String, on : String)
       query.left_join(table, on)
     end
 
+    def self.left_join(association_name : String)
+      query.left_join(association_name)
+    end
+
     def self.right_join(table : String, on : String)
       query.right_join(table, on)
+    end
+
+    def self.right_join(association_name : String)
+      query.right_join(association_name)
     end
 
     def self.group(*columns : String)

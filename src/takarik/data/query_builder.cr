@@ -163,7 +163,24 @@ module Takarik::Data
     # Generate all the where method overloads
     generate_where_overloads
 
-    # Joins
+    # Joins with automatic condition generation based on associations
+    def join(association_name : String)
+      add_association_join("JOIN", association_name)
+    end
+
+    def inner_join(association_name : String)
+      add_association_join("INNER JOIN", association_name)
+    end
+
+    def left_join(association_name : String)
+      add_association_join("LEFT JOIN", association_name)
+    end
+
+    def right_join(association_name : String)
+      add_association_join("RIGHT JOIN", association_name)
+    end
+
+    # Manual joins (keep existing functionality)
     def join(table : String, on : String)
       @joins << "JOIN #{table} ON #{on}"
       self
@@ -181,6 +198,39 @@ module Takarik::Data
 
     def inner_join(table : String, on : String)
       @joins << "INNER JOIN #{table} ON #{on}"
+      self
+    end
+
+    private def add_association_join(join_type : String, association_name : String)
+      # Get association metadata
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+
+      unless association
+        raise "Association '#{association_name}' not found for #{@model_class.name}"
+      end
+
+      # Generate table names
+      current_table = @model_class.table_name
+
+      # Generate associated table name from class name using Wordsmith
+      # Remove quotes from class name if present
+      clean_class_name = association.class_name.gsub("\"", "")
+      associated_table = Wordsmith::Inflector.tableize(clean_class_name)
+
+      # Generate join condition based on association type
+      case association.type
+      when .belongs_to?
+        # For belongs_to: current_table.foreign_key = associated_table.primary_key
+        on_condition = "#{current_table}.#{association.foreign_key} = #{associated_table}.#{association.primary_key}"
+      when .has_many?, .has_one?
+        # For has_many/has_one: current_table.primary_key = associated_table.foreign_key
+        on_condition = "#{current_table}.#{association.primary_key} = #{associated_table}.#{association.foreign_key}"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+
+      @joins << "#{join_type} #{associated_table} ON #{on_condition}"
       self
     end
 
