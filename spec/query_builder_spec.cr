@@ -1,0 +1,374 @@
+require "./spec_helper"
+
+describe Takarik::Data::QueryBuilder do
+  # Ensure User class has the connection
+  before_all do
+    User.establish_connection("sqlite3://./test.db")
+    Post.establish_connection("sqlite3://./test.db")
+  end
+
+  before_each do
+    User.create(name: "Alice", email: "alice@example.com", age: 25, active: true)
+    User.create(name: "Bob", email: "bob@example.com", age: 30, active: true)
+    User.create(name: "Charlie", email: "charlie@example.com", age: 35, active: false)
+    User.create(name: "Diana", email: "diana@example.com", age: 28, active: true)
+  end
+
+  describe "basic queries" do
+    it "builds simple where queries" do
+      query = User.where(active: true)
+      query.to_sql.should contain("WHERE active = ?")
+
+      results = query.to_a
+      results.size.should eq(3)
+      results.all?(&.active).should be_true
+    end
+
+    it "builds where queries with multiple conditions" do
+      query = User.where(active: true, age: 30)
+      query.to_sql.should contain("WHERE active = ? AND age = ?")
+
+      results = query.to_a
+      results.size.should eq(1)
+      results.first.name.should eq("Bob")
+    end
+
+    it "builds where queries with string conditions" do
+      query = User.where("age > ?", 28)
+      query.to_sql.should contain("WHERE age > ?")
+
+      results = query.to_a
+      results.size.should eq(2)
+      results.map(&.name).should contain("Bob")
+      results.map(&.name).should contain("Charlie")
+    end
+
+    it "builds where_not queries" do
+      query = User.where_not(active: false)
+      query.size.should eq(3)
+      query.all?(&.active).should be_true
+    end
+
+    it "builds where_in queries" do
+      query = User.where_in("age", [25, 30].map(&.as(DB::Any)))
+      query.size.should eq(2)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Bob")
+    end
+
+    it "builds where_not_in queries" do
+      query = User.where_not_in("age", [25].map(&.as(DB::Any)))
+      query.size.should eq(3)
+      query.map(&.name).should_not contain("Alice")
+    end
+
+    it "builds where_like queries" do
+      query = User.where_like("name", "A%")
+      query.size.should eq(1)
+      query.first.try(&.name).should eq("Alice")
+    end
+
+    it "builds where_between queries" do
+      query = User.where_between("age", 26.as(DB::Any), 32.as(DB::Any))
+      query.size.should eq(2)
+      query.map(&.name).should contain("Bob")
+      query.map(&.name).should contain("Diana")
+    end
+
+    it "builds where_null queries" do
+      # First create a user with null email
+      User.connection.exec("INSERT INTO users (name, age) VALUES (?, ?)", "NoEmail", 40)
+
+      query = User.where_null("email")
+      query.size.should eq(1)
+      query.first.try(&.name).should eq("NoEmail")
+    end
+
+    it "builds where_not_null queries" do
+      query = User.where_not_null("email")
+      query.size.should eq(4)  # All our test users have emails
+    end
+
+    it "builds comparison queries" do
+      query = User.where_gt("age", 28.as(DB::Any))
+      query.size.should eq(2)
+
+      query = User.where_gte("age", 28.as(DB::Any))
+      query.size.should eq(3)
+
+      query = User.where_lt("age", 30.as(DB::Any))
+      query.size.should eq(2)
+
+      query = User.where_lte("age", 30.as(DB::Any))
+      query.size.should eq(3)
+    end
+  end
+
+  describe "ordering" do
+    it "orders by single column ascending" do
+      query = User.order("age", "ASC")
+      query.to_sql.should contain("ORDER BY age ASC")
+
+      results = query.to_a
+      results.first.try(&.name).should eq("Alice")  # age 25
+      results.last.try(&.name).should eq("Charlie")  # age 35
+    end
+
+    it "orders by single column descending" do
+      query = User.order("age", "DESC")
+      results = query.to_a
+      results.first.try(&.name).should eq("Charlie")  # age 35
+      results.last.try(&.name).should eq("Alice")  # age 25
+    end
+
+    it "orders by multiple columns" do
+      query = User.order(active: "DESC", age: "ASC")
+      query.to_sql.should contain("ORDER BY active DESC, age ASC")
+    end
+  end
+
+  describe "limiting and pagination" do
+    it "limits results" do
+      query = User.limit(2)
+      query.to_sql.should contain("LIMIT 2")
+
+      query.size.should eq(2)
+    end
+
+    it "offsets results" do
+      query = User.order("age", "ASC").offset(1).limit(2)
+      query.to_sql.should contain("OFFSET 1")
+
+      query.size.should eq(2)
+      query.first.try(&.age).should eq(28)  # Diana, second youngest
+    end
+
+    it "paginates results" do
+      query = User.order("age", "ASC").page(2, 2)
+      query.size.should eq(2)
+      query.first.try(&.age).should eq(30)  # Bob, third in age order
+    end
+  end
+
+  describe "selecting columns" do
+    it "selects specific columns" do
+      query = User.select("name", "email")
+      query.to_sql.should contain("SELECT name, email")
+    end
+
+    it "selects columns as array" do
+      query = User.select(["name", "age"])
+      query.to_sql.should contain("SELECT name, age")
+    end
+  end
+
+  describe "grouping and having" do
+    it "groups by columns" do
+      query = User.group("active")
+      query.to_sql.should contain("GROUP BY active")
+    end
+
+    it "groups by multiple columns" do
+      query = User.group("active", "age")
+      query.to_sql.should contain("GROUP BY active, age")
+    end
+
+    it "adds having clause" do
+      query = User.group("active").having("COUNT(*) > ?", 1.as(DB::Any))
+      query.to_sql.should contain("HAVING COUNT(*) > ?")
+    end
+  end
+
+  describe "joins" do
+    before_each do
+      user = User.first!
+      Post.create(title: "Test Post", content: "Content", user_id: user.id, published: true)
+    end
+
+    it "performs inner joins" do
+      query = User.inner_join("posts", "posts.user_id = users.id")
+      query.to_sql.should contain("INNER JOIN posts ON posts.user_id = users.id")
+    end
+
+    it "performs left joins" do
+      query = User.left_join("posts", "posts.user_id = users.id")
+      query.to_sql.should contain("LEFT JOIN posts ON posts.user_id = users.id")
+    end
+
+    it "performs right joins" do
+      query = User.right_join("posts", "posts.user_id = users.id")
+      query.to_sql.should contain("RIGHT JOIN posts ON posts.user_id = users.id")
+    end
+  end
+
+  describe "execution methods" do
+    it "returns first record" do
+      user = User.order("age", "ASC").first
+      user.should_not be_nil
+      user.try(&.name).should eq("Alice")
+    end
+
+    it "returns first record with first!" do
+      user = User.order("age", "ASC").first!
+      user.name.should eq("Alice")
+    end
+
+    it "raises exception when no record found with first!" do
+      expect_raises(Exception, "No records found") do
+        User.where(name: "NonExistent").first!
+      end
+    end
+
+    it "returns last record" do
+      user = User.order("age", "ASC").last
+      user.should_not be_nil
+      user.try(&.name).should eq("Charlie")
+    end
+
+    it "counts records" do
+      count = User.where(active: true).count
+      count.should eq(3)
+    end
+
+    it "checks if records exist" do
+      User.where(active: true).exists?.should be_true
+      User.where(name: "NonExistent").exists?.should be_false
+    end
+
+    it "checks if query is empty" do
+      User.where(active: true).empty?.should be_false
+      User.where(name: "NonExistent").empty?.should be_true
+    end
+
+    it "checks if any records match" do
+      User.where(active: true).any?.should be_true
+      User.where(name: "NonExistent").any?.should be_false
+    end
+  end
+
+  describe "pluck methods" do
+    it "plucks single column" do
+      names = User.order("age", "ASC").pluck("name")
+      names.size.should eq(4)
+      names.first.should eq("Alice")
+    end
+
+    it "plucks multiple columns" do
+      data = User.order("age", "ASC").pluck("name", "age")
+      data.size.should eq(4)
+      data.first.should eq(["Alice", 25])
+    end
+  end
+
+  describe "aggregation methods" do
+    it "calculates sum" do
+      total_age = User.sum("age")
+      total_age.should eq(118)  # 25 + 30 + 35 + 28
+    end
+
+    it "calculates average" do
+      avg_age = User.average("age")
+      avg_age.should eq(29.5)  # 118 / 4
+    end
+
+    it "finds minimum" do
+      min_age = User.minimum("age")
+      min_age.should eq(25)
+    end
+
+    it "finds maximum" do
+      max_age = User.maximum("age")
+      max_age.should eq(35)
+    end
+  end
+
+  describe "update and delete operations" do
+    it "updates all matching records" do
+      affected = User.where(active: true).update_all(age: 99)
+      affected.should eq(3)
+
+      User.where(age: 99).count.should eq(3)
+    end
+
+    it "deletes all matching records" do
+      affected = User.where(active: false).delete_all
+      affected.should eq(1)
+
+      User.count.should eq(3)
+    end
+
+    it "destroys all matching records" do
+      count = User.where(active: false).destroy_all
+      count.should eq(1)
+
+      User.count.should eq(3)
+    end
+  end
+
+  describe "method chaining" do
+    it "chains multiple conditions" do
+      query = User
+        .where(active: true)
+        .where_gte("age", 25.as(DB::Any))
+        .order("age", "ASC")
+        .limit(2)
+
+      query.size.should eq(2)
+      results = query.to_a
+      results.first.try(&.name).should eq("Alice")
+      results.last.try(&.name).should eq("Diana")
+    end
+
+    it "chains with enumerable methods" do
+      names = User
+        .where(active: true)
+        .order("age", "ASC")
+        .map(&.name)
+
+      names.should eq(["Alice", "Diana", "Bob"])
+    end
+
+    it "uses each for iteration" do
+      count = 0
+      User.where(active: true).each do |user|
+        count += 1
+        user.active.should be_true
+      end
+      count.should eq(3)
+    end
+
+    it "uses select for filtering" do
+      young_users = User.all.select { |u| (u.age || 0) < 30 }
+      young_users.size.should eq(2)
+    end
+
+    it "uses find for searching" do
+      user = User.all.find { |u| u.name == "Bob" }
+      user.should_not be_nil
+      user.try(&.name).should eq("Bob")
+    end
+  end
+
+  describe "complex queries" do
+    it "builds complex query with all features" do
+      query = User
+        .select("users.name", "users.age")
+        .where(active: true)
+        .where_gte("age", 25.as(DB::Any))
+        .order("age", "DESC")
+        .limit(10)
+        .offset(0)
+
+      sql = query.to_sql
+      sql.should contain("SELECT users.name, users.age")
+      sql.should contain("FROM \"users\"")
+      sql.should contain("WHERE active = ? AND age >= ?")
+      sql.should contain("ORDER BY age DESC")
+      sql.should contain("LIMIT 10")
+      sql.should contain("OFFSET 0")
+
+      query.size.should eq(3)
+      query.first.try(&.age).should eq(30)  # Bob, highest age among active users
+    end
+  end
+end
