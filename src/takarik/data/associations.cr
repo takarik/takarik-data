@@ -1,13 +1,19 @@
 module Takarik::Data
   module Associations
-    # Association types
+    # ========================================
+    # ENUMS
+    # ========================================
+
     enum AssociationType
       BelongsTo
       HasMany
       HasOne
     end
 
-    # Association definition
+    # ========================================
+    # STRUCTS
+    # ========================================
+
     struct Association
       getter name : String
       getter type : AssociationType
@@ -21,8 +27,16 @@ module Takarik::Data
       end
     end
 
+    # ========================================
+    # MODULE VARIABLES
+    # ========================================
+
     # Storage for associations
     @@associations = {} of String => Array(Association)
+
+    # ========================================
+    # INCLUDED HOOK
+    # ========================================
 
     macro included
       # Class variable to store associations for this model
@@ -32,8 +46,11 @@ module Takarik::Data
       extend ClassMethods
     end
 
+    # ========================================
+    # CLASS METHODS MODULE
+    # ========================================
+
     module ClassMethods
-      # Class methods
       def add_association(name : String, type : AssociationType, class_name : String,
                              foreign_key : String, primary_key : String, dependent : Symbol?)
         @@associations[self.name] ||= [] of Association
@@ -45,7 +62,102 @@ module Takarik::Data
       end
     end
 
-    # Belongs to association
+    # ========================================
+    # INSTANCE METHODS
+    # ========================================
+
+    def destroy_dependent_associations
+      self.class.associations.each do |association|
+        next unless association.dependent
+
+        case association.dependent
+        when :destroy
+          destroy_associated_records(association)
+        when :delete_all
+          delete_associated_records(association)
+        when :nullify
+          nullify_associated_records(association)
+        end
+      end
+    end
+
+    def destroy
+      destroy_dependent_associations
+      super
+    end
+
+    # ========================================
+    # PRIVATE METHODS
+    # ========================================
+
+    private def destroy_associated_records(association : Association)
+      case association.type
+      when .belongs_to?
+        # For belongs_to, we don't destroy the parent
+        return
+      when .has_many?
+        records = get_associated_records(association)
+        records.each(&.destroy)
+      when .has_one?
+        record = get_associated_record(association)
+        record.try(&.destroy)
+      end
+    end
+
+    private def delete_associated_records(association : Association)
+      case association.type
+      when .belongs_to?
+        return
+      when .has_many?, .has_one?
+        primary_key_value = get_attribute(association.primary_key)
+        return unless primary_key_value
+
+        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
+        associated_class_name = association.class_name
+        table_name = associated_class_name.tableize
+        query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
+        self.class.connection.exec(query, primary_key_value)
+      end
+    end
+
+    private def nullify_associated_records(association : Association)
+      case association.type
+      when .belongs_to?
+        return
+      when .has_many?, .has_one?
+        primary_key_value = get_attribute(association.primary_key)
+        return unless primary_key_value
+
+        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
+        associated_class_name = association.class_name
+        table_name = associated_class_name.tableize
+        query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
+        self.class.connection.exec(query, primary_key_value)
+      end
+    end
+
+    private def get_associated_records(association : Association)
+      primary_key_value = get_attribute(association.primary_key)
+      return [] of BaseModel unless primary_key_value
+
+      # This is a simplified version - in a real implementation, you'd need
+      # to dynamically resolve the class name to the actual class
+      [] of BaseModel
+    end
+
+    private def get_associated_record(association : Association)
+      primary_key_value = get_attribute(association.primary_key)
+      return nil unless primary_key_value
+
+      # This is a simplified version - in a real implementation, you'd need
+      # to dynamically resolve the class name to the actual class
+      nil
+    end
+
+    # ========================================
+    # ASSOCIATION MACROS
+    # ========================================
+
     macro belongs_to(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil)
       {% if class_name %}
         {% class_name = class_name %}
@@ -112,7 +224,6 @@ module Takarik::Data
       end
     end
 
-    # Has many association
     macro has_many(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil)
       {% if class_name %}
         {% class_name = class_name %}
@@ -150,7 +261,7 @@ module Takarik::Data
 
         unless primary_key_value
           # Return empty query builder
-          return associated_class.where("1 = ?", 0.as(DB::Any))
+          return associated_class.where("1 = ?", 0)
         end
 
         conditions = Hash(String, DB::Any).new
@@ -180,7 +291,6 @@ module Takarik::Data
       end
     end
 
-    # Has one association
     macro has_one(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil)
       {% if class_name %}
         {% class_name = class_name %}
@@ -257,92 +367,6 @@ module Takarik::Data
         record.save
         record
       end
-    end
-
-    # Instance methods for handling dependent associations
-    def destroy_dependent_associations
-      self.class.associations.each do |association|
-        next unless association.dependent
-
-        case association.dependent
-        when :destroy
-          destroy_associated_records(association)
-        when :delete_all
-          delete_associated_records(association)
-        when :nullify
-          nullify_associated_records(association)
-        end
-      end
-    end
-
-    private def destroy_associated_records(association : Association)
-      case association.type
-      when .belongs_to?
-        # For belongs_to, we don't destroy the parent
-        return
-      when .has_many?
-        records = get_associated_records(association)
-        records.each(&.destroy)
-      when .has_one?
-        record = get_associated_record(association)
-        record.try(&.destroy)
-      end
-    end
-
-    private def delete_associated_records(association : Association)
-      case association.type
-      when .belongs_to?
-        return
-      when .has_many?, .has_one?
-        primary_key_value = get_attribute(association.primary_key)
-        return unless primary_key_value
-
-        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
-        associated_class_name = association.class_name
-        table_name = associated_class_name.tableize
-        query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
-        self.class.connection.exec(query, primary_key_value)
-      end
-    end
-
-    private def nullify_associated_records(association : Association)
-      case association.type
-      when .belongs_to?
-        return
-      when .has_many?, .has_one?
-        primary_key_value = get_attribute(association.primary_key)
-        return unless primary_key_value
-
-        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
-        associated_class_name = association.class_name
-        table_name = associated_class_name.tableize
-        query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
-        self.class.connection.exec(query, primary_key_value)
-      end
-    end
-
-    private def get_associated_records(association : Association)
-      primary_key_value = get_attribute(association.primary_key)
-      return [] of BaseModel unless primary_key_value
-
-      # This is a simplified version - in a real implementation, you'd need
-      # to dynamically resolve the class name to the actual class
-      [] of BaseModel
-    end
-
-    private def get_associated_record(association : Association)
-      primary_key_value = get_attribute(association.primary_key)
-      return nil unless primary_key_value
-
-      # This is a simplified version - in a real implementation, you'd need
-      # to dynamically resolve the class name to the actual class
-      nil
-    end
-
-    # Override destroy to handle dependent associations
-    def destroy
-      destroy_dependent_associations
-      super
     end
   end
 end

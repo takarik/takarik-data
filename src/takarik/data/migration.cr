@@ -1,14 +1,29 @@
 require "./base_model"
 
 module Takarik::Data
-  # Migration support
+  # ========================================
+  # MIGRATION CLASS
+  # ========================================
+
   abstract class Migration
+    # ========================================
+    # ABSTRACT METHODS
+    # ========================================
+
     abstract def up
     abstract def down
+
+    # ========================================
+    # CLASS METHODS
+    # ========================================
 
     def self.connection
       BaseModel.connection
     end
+
+    # ========================================
+    # INSTANCE METHODS - TABLE OPERATIONS
+    # ========================================
 
     def create_table(name : String, &block)
       table_builder = TableBuilder.new(name)
@@ -19,6 +34,10 @@ module Takarik::Data
     def drop_table(name : String)
       connection.exec("DROP TABLE #{name}")
     end
+
+    # ========================================
+    # INSTANCE METHODS - COLUMN OPERATIONS
+    # ========================================
 
     def add_column(table : String, name : String, type : String, **options)
       sql = "ALTER TABLE #{table} ADD COLUMN #{name} #{type}"
@@ -38,6 +57,10 @@ module Takarik::Data
       connection.exec("ALTER TABLE #{table} DROP COLUMN #{name}")
     end
 
+    # ========================================
+    # INSTANCE METHODS - INDEX OPERATIONS
+    # ========================================
+
     def add_index(table : String, columns : String | Array(String), **options)
       column_list = columns.is_a?(Array) ? columns.join(", ") : columns
       index_name = options[:name]? || "idx_#{table}_#{column_list.gsub(", ", "_")}"
@@ -52,15 +75,38 @@ module Takarik::Data
     def remove_index(table : String, name : String)
       connection.exec("DROP INDEX #{name}")
     end
+
+    # ========================================
+    # PRIVATE METHODS
+    # ========================================
+
+    private def connection
+      self.class.connection
+    end
   end
 
-  # Table builder for migrations
+  # ========================================
+  # TABLE BUILDER CLASS
+  # ========================================
+
   class TableBuilder
+    # ========================================
+    # INSTANCE VARIABLES
+    # ========================================
+
     @columns = [] of String
     @table_name : String
 
+    # ========================================
+    # INITIALIZE
+    # ========================================
+
     def initialize(@table_name : String)
     end
+
+    # ========================================
+    # INSTANCE METHODS - COLUMN DEFINITION
+    # ========================================
 
     def column(name : String, type : String, **options)
       column_def = "#{name} #{type}"
@@ -87,6 +133,10 @@ module Takarik::Data
     def primary_key(name : String = "id", type : String = "INTEGER")
       column(name, type, primary_key: true, auto_increment: true)
     end
+
+    # ========================================
+    # INSTANCE METHODS - TYPE HELPERS
+    # ========================================
 
     def string(name : String, **options)
       limit = options[:limit]? || 255
@@ -121,6 +171,10 @@ module Takarik::Data
       datetime("created_at", null: false)
       datetime("updated_at", null: false)
     end
+
+    # ========================================
+    # INSTANCE METHODS - SQL GENERATION
+    # ========================================
 
     def to_sql
       "CREATE TABLE #{@table_name} (#{@columns.join(", ")})"

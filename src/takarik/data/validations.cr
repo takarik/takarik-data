@@ -1,6 +1,9 @@
 module Takarik::Data
   module Validations
-    # Validation error class
+    # ========================================
+    # EXCEPTION CLASSES
+    # ========================================
+
     class ValidationError < Exception
       getter errors : Hash(String, Array(String))
 
@@ -10,7 +13,10 @@ module Takarik::Data
       end
     end
 
-    # Validation result
+    # ========================================
+    # STRUCTS
+    # ========================================
+
     struct ValidationResult
       getter valid : Bool
       getter errors : Hash(String, Array(String))
@@ -27,8 +33,16 @@ module Takarik::Data
       end
     end
 
+    # ========================================
+    # MODULE VARIABLES
+    # ========================================
+
     # Validation rules storage
     @@validation_rules = {} of String => Array(Proc(BaseModel, ValidationResult))
+
+    # ========================================
+    # INCLUDED HOOK
+    # ========================================
 
     macro included
       # Instance variable to store validation errors
@@ -41,15 +55,63 @@ module Takarik::Data
       extend ClassMethods
     end
 
+    # ========================================
+    # CLASS METHODS MODULE
+    # ========================================
+
     module ClassMethods
-      # Class methods
       def add_validation(field : String, &block : BaseModel -> ValidationResult)
         @@validation_rules[field] ||= [] of Proc(BaseModel, ValidationResult)
         @@validation_rules[field] << block
       end
     end
 
-    # Validation macros
+    # ========================================
+    # INSTANCE METHODS
+    # ========================================
+
+    def valid?
+      validate.valid?
+    end
+
+    def invalid?
+      !valid?
+    end
+
+    def validate
+      @validation_errors.clear
+      all_valid = true
+
+      @@validation_rules.each do |field, rules|
+        rules.each do |rule|
+          result = rule.call(self)
+          unless result.valid?
+            all_valid = false
+            result.errors.each do |error_field, messages|
+              @validation_errors[error_field] ||= [] of String
+              @validation_errors[error_field].concat(messages)
+            end
+          end
+        end
+      end
+
+      ValidationResult.new(all_valid, @validation_errors.dup)
+    end
+
+    def errors
+      @validation_errors
+    end
+
+    def errors_full_messages
+      @validation_errors.flat_map do |field, messages|
+        messages.map { |message| "#{field.capitalize} #{message}" }
+      end
+    end
+
+    # ========================================
+    # VALIDATION MACROS
+    # ========================================
+
     macro validates_presence_of(*fields)
       {% for field in fields %}
         {% field_name = field.stringify.gsub(/^:/, "") %}
@@ -222,45 +284,6 @@ module Takarik::Data
           error_hash[{{field_name}}] = errors
           ValidationResult.new(false, error_hash)
         end
-      end
-    end
-
-    # Instance methods
-    def valid?
-      validate.valid?
-    end
-
-    def invalid?
-      !valid?
-    end
-
-    def validate
-      @validation_errors.clear
-      all_valid = true
-
-      @@validation_rules.each do |field, rules|
-        rules.each do |rule|
-          result = rule.call(self)
-          unless result.valid?
-            all_valid = false
-            result.errors.each do |error_field, messages|
-              @validation_errors[error_field] ||= [] of String
-              @validation_errors[error_field].concat(messages)
-            end
-          end
-        end
-      end
-
-      ValidationResult.new(all_valid, @validation_errors.dup)
-    end
-
-    def errors
-      @validation_errors
-    end
-
-    def errors_full_messages
-      @validation_errors.flat_map do |field, messages|
-        messages.map { |message| "#{field.capitalize} #{message}" }
       end
     end
   end
