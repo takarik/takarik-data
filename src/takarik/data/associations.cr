@@ -50,18 +50,27 @@ module Takarik::Data
       {% if class_name %}
         {% class_name = class_name %}
       {% else %}
+        # Convert association name to class name (e.g., "user" -> "User")
         {% class_name = name.id.stringify.camelcase %}
       {% end %}
 
       {% if foreign_key %}
-        {% foreign_key = foreign_key %}
+        {% if foreign_key.is_a?(SymbolLiteral) %}
+          {% foreign_key = foreign_key.id.stringify %}
+        {% else %}
+          {% foreign_key = foreign_key %}
+        {% end %}
       {% else %}
         # Generate foreign key from association name (e.g., "user" -> "user_id")
         {% foreign_key = name.id.stringify + "_id" %}
       {% end %}
 
+      {% if primary_key.is_a?(SymbolLiteral) %}
+        {% primary_key = primary_key.id.stringify %}
+      {% end %}
+
       # Add association metadata
-      add_association({{name.stringify}}, AssociationType::BelongsTo, {{class_name.stringify}},
+      add_association({{name.id.stringify}}, AssociationType::BelongsTo, {{class_name.stringify}},
                      {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
 
       # Define the getter method
@@ -109,18 +118,27 @@ module Takarik::Data
         {% class_name = class_name %}
       {% else %}
         # Convert association name to class name (e.g., "posts" -> "Post")
+        # For irregular plurals, users should specify class_name explicitly
         {% class_name = name.id.stringify.gsub(/s$/, "").camelcase %}
       {% end %}
 
       {% if foreign_key %}
-        {% foreign_key = foreign_key %}
+        {% if foreign_key.is_a?(SymbolLiteral) %}
+          {% foreign_key = foreign_key.id.stringify %}
+        {% else %}
+          {% foreign_key = foreign_key %}
+        {% end %}
       {% else %}
         # Generate foreign key from current class name (e.g., "User" -> "user_id")
         {% foreign_key = @type.name.split("::").last.underscore + "_id" %}
       {% end %}
 
+      {% if primary_key.is_a?(SymbolLiteral) %}
+        {% primary_key = primary_key.id.stringify %}
+      {% end %}
+
       # Add association metadata
-      add_association({{name.stringify}}, AssociationType::HasMany, {{class_name.stringify}},
+      add_association({{name.id.stringify}}, AssociationType::HasMany, {{class_name.stringify}},
                      {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
 
       # Define the getter method
@@ -172,14 +190,22 @@ module Takarik::Data
       {% end %}
 
       {% if foreign_key %}
-        {% foreign_key = foreign_key %}
+        {% if foreign_key.is_a?(SymbolLiteral) %}
+          {% foreign_key = foreign_key.id.stringify %}
+        {% else %}
+          {% foreign_key = foreign_key %}
+        {% end %}
       {% else %}
         # Generate foreign key from current class name (e.g., "User" -> "user_id")
         {% foreign_key = @type.name.split("::").last.underscore + "_id" %}
       {% end %}
 
+      {% if primary_key.is_a?(SymbolLiteral) %}
+        {% primary_key = primary_key.id.stringify %}
+      {% end %}
+
       # Add association metadata
-      add_association({{name.stringify}}, AssociationType::HasOne, {{class_name.stringify}},
+      add_association({{name.id.stringify}}, AssociationType::HasOne, {{class_name.stringify}},
                      {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
 
       # Define the getter method
@@ -271,9 +297,10 @@ module Takarik::Data
         primary_key_value = get_attribute(association.primary_key)
         return unless primary_key_value
 
-        # Get the associated class name and convert to actual class
+        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
         associated_class_name = association.class_name
-        query = "DELETE FROM #{associated_class_name.underscore.pluralize} WHERE #{association.foreign_key} = ?"
+        table_name = associated_class_name.tableize
+        query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
         self.class.connection.exec(query, primary_key_value)
       end
     end
@@ -286,9 +313,10 @@ module Takarik::Data
         primary_key_value = get_attribute(association.primary_key)
         return unless primary_key_value
 
-        # Get the associated class name and convert to actual class
+        # Use Wordsmith to convert class name to table name (e.g., "Post" -> "posts")
         associated_class_name = association.class_name
-        query = "UPDATE #{associated_class_name.underscore.pluralize} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
+        table_name = associated_class_name.tableize
+        query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
         self.class.connection.exec(query, primary_key_value)
       end
     end

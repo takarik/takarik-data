@@ -17,4 +17,16 @@ class String
   def singularize
     Wordsmith::Inflector.singularize(self)
   end
+
+  def classify
+    Wordsmith::Inflector.classify(self)
+  end
+
+  def tableize
+    Wordsmith::Inflector.tableize(self)
+  end
+
+  def foreign_key
+    Wordsmith::Inflector.foreign_key(self)
+  end
 end
