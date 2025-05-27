@@ -80,14 +80,14 @@ module Takarik::Data
 
         # Also update the attributes hash
         if value.nil?
-          @attributes.delete({{name.stringify}})
+          @attributes.delete({{name.id.stringify}})
         else
-          @attributes[{{name.stringify}}] = value.as(DB::Any)
+          @attributes[{{name.id.stringify}}] = value.as(DB::Any)
         end
 
         # Track changes
         if old_value != value
-          @changed_attributes << {{name.stringify}}
+          @changed_attributes << {{name.id.stringify}}
         end
         value
       end
@@ -96,8 +96,8 @@ module Takarik::Data
       def {{name.id}}
         if @{{name.id}}
           @{{name.id}}
-        elsif @attributes.has_key?({{name.stringify}})
-          value = @attributes[{{name.stringify}}]
+        elsif @attributes.has_key?({{name.id.stringify}})
+          value = @attributes[{{name.id.stringify}}]
           {% if type == Int32 %}
             case value
             when Int32
@@ -673,7 +673,11 @@ module Takarik::Data
 
       # Override the class method to return the primary key name
       def self.primary_key
-        {{name.id.stringify}}
+        {% if name.is_a?(SymbolLiteral) %}
+          {{name.id.stringify}}
+        {% else %}
+          {{name}}
+        {% end %}
       end
     end
 
@@ -690,7 +694,11 @@ module Takarik::Data
     # Macro to set table name
     macro table_name(name)
       def self.table_name
-        {{name.stringify}}
+        {% if name.is_a?(SymbolLiteral) %}
+          {{name.id.stringify}}
+        {% else %}
+          {{name}}
+        {% end %}
       end
     end
 
