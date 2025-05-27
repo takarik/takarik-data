@@ -367,86 +367,154 @@ module Takarik::Data
       end
     end
 
-    # Callbacks support
+    # Callbacks support - refactored to support multiple callbacks
+    # Simple approach: use incremental counters for each callback type
+
+    # Callback registration macros
     macro before_save(&block)
-      def before_save_callback
+      {%
+        # Use a simple counter based on existing methods
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_save_callback_") }.size
+      %}
+
+      def before_save_callback_{{callback_num}}
         {{block.body}}
       end
     end
 
     macro after_save(&block)
-      def after_save_callback
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_save_callback_") }.size
+      %}
+
+      def after_save_callback_{{callback_num}}
         {{block.body}}
       end
     end
 
     macro before_create(&block)
-      def before_create_callback
-        {{block.body}}
-      end
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_create_callback_") }.size
+      %}
 
-      private def insert_record
-        before_create_callback if new_record?
-        super
+      def before_create_callback_{{callback_num}}
+        {{block.body}}
       end
     end
 
     macro after_create(&block)
-      def after_create_callback
-        {{block.body}}
-      end
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_create_callback_") }.size
+      %}
 
-      private def insert_record
-        result = super
-        after_create_callback if result && new_record?
-        result
+      def after_create_callback_{{callback_num}}
+        {{block.body}}
       end
     end
 
     macro before_update(&block)
-      def before_update_callback
-        {{block.body}}
-      end
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_update_callback_") }.size
+      %}
 
-      private def update_record
-        before_update_callback unless new_record?
-        super
+      def before_update_callback_{{callback_num}}
+        {{block.body}}
       end
     end
 
     macro after_update(&block)
-      def after_update_callback
-        {{block.body}}
-      end
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_update_callback_") }.size
+      %}
 
-      private def update_record
-        result = super
-        after_update_callback if result && !new_record?
-        result
+      def after_update_callback_{{callback_num}}
+        {{block.body}}
       end
     end
 
     macro before_destroy(&block)
-      def before_destroy_callback
-        {{block.body}}
-      end
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_destroy_callback_") }.size
+      %}
 
-      def destroy
-        before_destroy_callback
-        super
+      def before_destroy_callback_{{callback_num}}
+        {{block.body}}
       end
     end
 
     macro after_destroy(&block)
-      def after_destroy_callback
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_destroy_callback_") }.size
+      %}
+
+      def after_destroy_callback_{{callback_num}}
         {{block.body}}
       end
+    end
 
-      def destroy
-        result = super
-        after_destroy_callback if result
-        result
-      end
+    # Methods to execute callbacks by calling all numbered callback methods
+    private def run_before_save_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_save_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_save_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_save_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_before_create_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_create_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_create_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_create_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_before_update_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_update_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_update_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_update_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_before_destroy_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_destroy_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_destroy_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_destroy_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
     end
 
     # Timestamps support
@@ -621,10 +689,8 @@ module Takarik::Data
         return false unless valid?
       {% end %}
 
-      # Run before_save callback if defined
-      {% if @type.methods.any? { |m| m.name.stringify == "before_save_callback" } %}
-        before_save_callback
-      {% end %}
+      # Run before_save callbacks
+      run_before_save_callbacks
 
       result = if new_record?
         insert_record
@@ -632,10 +698,8 @@ module Takarik::Data
         update_record if changed?
       end
 
-      # Run after_save callback if defined and save was successful
-      {% if @type.methods.any? { |m| m.name.stringify == "after_save_callback" } %}
-        after_save_callback if result
-      {% end %}
+      # Run after_save callbacks if save was successful
+      run_after_save_callbacks if result
 
       result
     end
@@ -665,12 +729,22 @@ module Takarik::Data
     def destroy
       return false if new_record?
 
+      # Run before_destroy callbacks
+      run_before_destroy_callbacks
+
       query = "DELETE FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ?"
       id_value = get_attribute(self.class.primary_key)
 
       result = self.class.connection.exec(query, id_value)
-      @persisted = false if result.rows_affected > 0
-      result.rows_affected > 0
+      success = result.rows_affected > 0
+
+      if success
+        @persisted = false
+        # Run after_destroy callbacks
+        run_after_destroy_callbacks
+      end
+
+      success
     end
 
     def reload
@@ -742,6 +816,9 @@ module Takarik::Data
     end
 
     private def insert_record
+      # Run before_create callbacks first, before capturing columns
+      run_before_create_callbacks
+
       columns = @attributes.keys
       return false if columns.empty?
 
@@ -761,6 +838,10 @@ module Takarik::Data
         end
         @persisted = true
         @changed_attributes.clear
+
+        # Run after_create callbacks
+        run_after_create_callbacks
+
         true
       else
         false
@@ -769,6 +850,9 @@ module Takarik::Data
 
     private def update_record
       return false if @changed_attributes.empty?
+
+      # Run before_update callbacks first, before capturing changed attributes
+      run_before_update_callbacks
 
       set_clause = @changed_attributes.map { |attr| "#{attr} = ?" }.join(", ")
       query = "UPDATE #{self.class.table_name} SET #{set_clause} WHERE #{self.class.primary_key} = ?"
@@ -781,6 +865,10 @@ module Takarik::Data
 
       if result.rows_affected > 0
         @changed_attributes.clear
+
+        # Run after_update callbacks
+        run_after_update_callbacks
+
         true
       else
         false
