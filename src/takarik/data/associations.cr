@@ -71,7 +71,7 @@ module Takarik::Data
 
       # Add association metadata
       add_association({{name.id.stringify}}, AssociationType::BelongsTo, {{class_name.stringify}},
-                     {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
+                     {{foreign_key}}, {{primary_key}}, {{dependent}})
 
       # Define the getter method
       def {{name.id}}
@@ -139,7 +139,7 @@ module Takarik::Data
 
       # Add association metadata
       add_association({{name.id.stringify}}, AssociationType::HasMany, {{class_name.stringify}},
-                     {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
+                     {{foreign_key}}, {{primary_key}}, {{dependent}})
 
       # Define the getter method
       def {{name.id}}
@@ -206,7 +206,7 @@ module Takarik::Data
 
       # Add association metadata
       add_association({{name.id.stringify}}, AssociationType::HasOne, {{class_name.stringify}},
-                     {{foreign_key.stringify}}, {{primary_key.stringify}}, {{dependent}})
+                     {{foreign_key}}, {{primary_key}}, {{dependent}})
 
       # Define the getter method
       def {{name.id}}

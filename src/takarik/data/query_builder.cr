@@ -8,6 +8,7 @@ module Takarik::Data
     @order_clauses = [] of String
     @group_clause : String?
     @having_clause : String?
+    @having_params = [] of DB::Any
     @limit_value : Int32?
     @offset_value : Int32?
     @has_joins = false
@@ -17,12 +18,44 @@ module Takarik::Data
 
     # Select specific columns
     def select(*columns : String)
-      @select_clause = columns.join(", ")
+      # Quote column references that look like table.column
+      quoted_columns = columns.map do |col|
+        if col.includes?(".")
+          parts = col.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            col # Complex expression, leave as-is
+          end
+        elsif col.includes?(" ") || col.includes?("(") || col.includes?("*")
+          # SQL expression, function call, or wildcard - don't quote
+          col
+        else
+          "\"#{col}\"" # Simple column name, quote it
+        end
+      end
+      @select_clause = quoted_columns.join(", ")
       self
     end
 
     def select(columns : Array(String))
-      @select_clause = columns.join(", ")
+      # Quote column references that look like table.column
+      quoted_columns = columns.map do |col|
+        if col.includes?(".")
+          parts = col.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            col # Complex expression, leave as-is
+          end
+        elsif col.includes?(" ") || col.includes?("(") || col.includes?("*")
+          # SQL expression, function call, or wildcard - don't quote
+          col
+        else
+          "\"#{col}\"" # Simple column name, quote it
+        end
+      end
+      @select_clause = quoted_columns.join(", ")
       self
     end
 
@@ -31,14 +64,14 @@ module Takarik::Data
       conditions.each do |column, value|
         if value.nil?
           # Handle NULL checks
-          @where_conditions << "#{column} IS NULL"
+          @where_conditions << "\"#{column}\" IS NULL"
         elsif value.is_a?(Array)
           # Handle IN clauses
           placeholders = (["?"] * value.size).join(", ")
-          @where_conditions << "#{column} IN (#{placeholders})"
+          @where_conditions << "\"#{column}\" IN (#{placeholders})"
           @where_params.concat(value)
         else
-          @where_conditions << "#{column} = ?"
+          @where_conditions << "\"#{column}\" = ?"
           @where_params << value
         end
       end
@@ -57,20 +90,31 @@ module Takarik::Data
 
     # Enhanced where with operator support for DB::Any
     def where(column_with_operator : String, value : DB::Any)
-      if column_with_operator.includes?("?")
-        # This is a complete condition with placeholders, treat as raw condition
-        @where_conditions << column_with_operator
-        @where_params << value
-      elsif column_with_operator.includes?(" ")
-        # Handle cases like "age >", "name LIKE", etc.
-        @where_conditions << "#{column_with_operator} ?"
+      if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+        # This is a SQL expression with placeholders or operators, don't quote
+        if column_with_operator.includes?("?")
+          @where_conditions << column_with_operator
+        else
+          @where_conditions << "#{column_with_operator} ?"
+        end
         @where_params << value
       else
-        # Regular equality
-        if value.nil?
-          @where_conditions << "#{column_with_operator} IS NULL"
+        # Check if it's a table.column reference
+        quoted_column = if column_with_operator.includes?(".")
+          parts = column_with_operator.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            column_with_operator # Complex expression, leave as-is
+          end
         else
-          @where_conditions << "#{column_with_operator} = ?"
+          "\"#{column_with_operator}\"" # Simple column name, quote it
+        end
+
+        if value.nil?
+          @where_conditions << "#{quoted_column} IS NULL"
+        else
+          @where_conditions << "#{quoted_column} = ?"
           @where_params << value
         end
       end
@@ -79,14 +123,26 @@ module Takarik::Data
 
     def where_not(conditions : Hash(String, DB::Any))
       conditions.each do |column, value|
+        # Check if it's a table.column reference
+        quoted_column = if column.includes?(".")
+          parts = column.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            column # Complex expression, leave as-is
+          end
+        else
+          "\"#{column}\"" # Simple column name, quote it
+        end
+
         if value.nil?
-          @where_conditions << "#{column} IS NOT NULL"
+          @where_conditions << "#{quoted_column} IS NOT NULL"
         elsif value.is_a?(Array)
           placeholders = (["?"] * value.size).join(", ")
-          @where_conditions << "#{column} NOT IN (#{placeholders})"
+          @where_conditions << "#{quoted_column} NOT IN (#{placeholders})"
           @where_params.concat(value)
         else
-          @where_conditions << "#{column} != ?"
+          @where_conditions << "#{quoted_column} != ?"
           @where_params << value
         end
       end
@@ -98,8 +154,20 @@ module Takarik::Data
     end
 
     def where_not(column : String, values : Array(DB::Any))
+      # Check if it's a table.column reference
+      quoted_column = if column.includes?(".")
+        parts = column.split(".")
+        if parts.size == 2
+          "\"#{parts[0]}\".\"#{parts[1]}\""
+        else
+          column # Complex expression, leave as-is
+        end
+      else
+        "\"#{column}\"" # Simple column name, quote it
+      end
+
       placeholders = (["?"] * values.size).join(", ")
-      @where_conditions << "#{column} NOT IN (#{placeholders})"
+      @where_conditions << "#{quoted_column} NOT IN (#{placeholders})"
       @where_params.concat(values)
       self
     end
@@ -123,14 +191,28 @@ module Takarik::Data
 
         # Column with operator overload for {{type}}
         def where(column_with_operator : String, value : {{type}})
-          if column_with_operator.includes?("?")
-            @where_conditions << column_with_operator
-            @where_params << value.as(DB::Any)
-          elsif column_with_operator.includes?(" ")
-            @where_conditions << "#{column_with_operator} ?"
+          if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+            # This is a SQL expression, don't quote
+            if column_with_operator.includes?("?")
+              @where_conditions << column_with_operator
+            else
+              @where_conditions << "#{column_with_operator} ?"
+            end
             @where_params << value.as(DB::Any)
           else
-            @where_conditions << "#{column_with_operator} = ?"
+            # Check if it's a table.column reference
+            quoted_column = if column_with_operator.includes?(".")
+              parts = column_with_operator.split(".")
+              if parts.size == 2
+                "\"#{parts[0]}\".\"#{parts[1]}\""
+              else
+                column_with_operator # Complex expression, leave as-is
+              end
+            else
+              "\"#{column_with_operator}\"" # Simple column name, quote it
+            end
+
+            @where_conditions << "#{quoted_column} = ?"
             @where_params << value.as(DB::Any)
           end
           self
@@ -150,10 +232,22 @@ module Takarik::Data
       # Range overloads for numeric and comparable types
       {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
         def where(column : String, range : Range({{type}}, {{type}}))
-          if range.exclusive?
-            @where_conditions << "#{column} >= ? AND #{column} < ?"
+          # Check if it's a table.column reference
+          quoted_column = if column.includes?(".")
+            parts = column.split(".")
+            if parts.size == 2
+              "\"#{parts[0]}\".\"#{parts[1]}\""
+            else
+              column # Complex expression, leave as-is
+            end
           else
-            @where_conditions << "#{column} BETWEEN ? AND ?"
+            "\"#{column}\"" # Simple column name, quote it
+          end
+
+          if range.exclusive?
+            @where_conditions << "#{quoted_column} >= ? AND #{quoted_column} < ?"
+          else
+            @where_conditions << "#{quoted_column} BETWEEN ? AND ?"
           end
           @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
           self
@@ -231,15 +325,15 @@ module Takarik::Data
       case association.type
       when .belongs_to?
         # For belongs_to: current_table.foreign_key = associated_table.primary_key
-        on_condition = "#{current_table}.#{association.foreign_key} = #{associated_table}.#{association.primary_key}"
+        on_condition = "\"#{current_table}\".\"#{association.foreign_key}\" = \"#{associated_table}\".\"#{association.primary_key}\""
       when .has_many?, .has_one?
         # For has_many/has_one: current_table.primary_key = associated_table.foreign_key
-        on_condition = "#{current_table}.#{association.primary_key} = #{associated_table}.#{association.foreign_key}"
+        on_condition = "\"#{current_table}\".\"#{association.primary_key}\" = \"#{associated_table}\".\"#{association.foreign_key}\""
       else
         raise "Unknown association type: #{association.type}"
       end
 
-      @joins << "#{join_type} #{associated_table} ON #{on_condition}"
+      @joins << "#{join_type} \"#{associated_table}\" ON #{on_condition}"
       self
     end
 
@@ -264,7 +358,20 @@ module Takarik::Data
 
     # Ordering
     def order(column : String, direction : String = "ASC")
-      @order_clauses << "#{column} #{direction.upcase}"
+      quoted_column = if column.includes?(".")
+        parts = column.split(".")
+        if parts.size == 2
+          "\"#{parts[0]}\".\"#{parts[1]}\""
+        else
+          column # Complex expression, leave as-is
+        end
+      elsif column.includes?(" ") || column.includes?("(")
+        # SQL expression or function call, don't quote
+        column
+      else
+        "\"#{column}\"" # Simple column name, quote it
+      end
+      @order_clauses << "#{quoted_column} #{direction.upcase}"
       self
     end
 
@@ -281,19 +388,82 @@ module Takarik::Data
 
     # Grouping
     def group(*columns : String)
-      @group_clause = columns.join(", ")
+      quoted_columns = columns.map do |col|
+        if col.includes?(".")
+          parts = col.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            col # Complex expression, leave as-is
+          end
+        elsif col.includes?(" ") || col.includes?("(")
+          # SQL expression or function call, don't quote
+          col
+        else
+          "\"#{col}\"" # Simple column name, quote it
+        end
+      end
+      @group_clause = quoted_columns.join(", ")
       self
     end
 
     def group(columns : Array(String))
-      @group_clause = columns.join(", ")
+      quoted_columns = columns.map do |col|
+        if col.includes?(".")
+          parts = col.split(".")
+          if parts.size == 2
+            "\"#{parts[0]}\".\"#{parts[1]}\""
+          else
+            col # Complex expression, leave as-is
+          end
+        elsif col.includes?(" ") || col.includes?("(")
+          # SQL expression or function call, don't quote
+          col
+        else
+          "\"#{col}\"" # Simple column name, quote it
+        end
+      end
+      @group_clause = quoted_columns.join(", ")
       self
     end
 
     # Having
     def having(condition : String, *params : DB::Any)
       @having_clause = condition
-      @where_params.concat(params.to_a)
+      @having_params.concat(params.to_a)
+      self
+    end
+
+    # Having with column and value (similar to where)
+    def having(column : String, value : DB::Any)
+      # If the column contains a placeholder (?), treat it as a raw SQL condition
+      if column.includes?("?")
+        @having_clause = column
+        @having_params << value
+        return self
+      end
+
+      # Check if it's a table.column reference
+      quoted_column = if column.includes?(".")
+        parts = column.split(".")
+        if parts.size == 2
+          "\"#{parts[0]}\".\"#{parts[1]}\""
+        else
+          column # Complex expression, leave as-is
+        end
+      elsif column.includes?(" ") || column.includes?("(")
+        # SQL expression or function call, don't quote
+        column
+      else
+        "\"#{column}\"" # Simple column name, quote it
+      end
+
+      if value.nil?
+        @having_clause = "#{quoted_column} IS NULL"
+      else
+        @having_clause = "#{quoted_column} = ?"
+        @having_params << value
+      end
       self
     end
 
@@ -327,7 +497,7 @@ module Takarik::Data
       sql_parts << "SELECT #{select_part}"
 
       # FROM clause
-      sql_parts << "FROM #{@model_class.table_name}"
+      sql_parts << "FROM \"#{@model_class.table_name}\""
 
       # JOIN clauses
       unless @joins.empty?
@@ -370,7 +540,10 @@ module Takarik::Data
     def to_a
       results = [] of T
 
-      @model_class.connection.query(to_sql, args: @where_params) do |rs|
+      # Combine parameters in the correct order: WHERE params first, then HAVING params
+      all_params = @where_params + @having_params
+
+      @model_class.connection.query(to_sql, args: all_params) do |rs|
         rs.each do
           instance = @model_class.new
           if @has_joins
@@ -426,7 +599,9 @@ module Takarik::Data
       original_select = @select_clause
       @select_clause = "COUNT(*)"
 
-      result = @model_class.connection.scalar(to_sql, args: @where_params).as(Int64)
+      # Combine parameters in the correct order: WHERE params first, then HAVING params
+      all_params = @where_params + @having_params
+      result = @model_class.connection.scalar(to_sql, args: all_params).as(Int64)
 
       @select_clause = original_select
       result
@@ -448,7 +623,9 @@ module Takarik::Data
       @select_clause = column
       results = [] of DB::Any
 
-      @model_class.connection.query(to_sql, args: @where_params) do |rs|
+      # Combine parameters in the correct order: WHERE params first, then HAVING params
+      all_params = @where_params + @having_params
+      @model_class.connection.query(to_sql, args: all_params) do |rs|
         rs.each do
           results << rs.read
         end
@@ -461,7 +638,9 @@ module Takarik::Data
       @select_clause = columns.join(", ")
       results = [] of Array(DB::Any)
 
-      @model_class.connection.query(to_sql, args: @where_params) do |rs|
+      # Combine parameters in the correct order: WHERE params first, then HAVING params
+      all_params = @where_params + @having_params
+      @model_class.connection.query(to_sql, args: all_params) do |rs|
         rs.each do
           row = [] of DB::Any
           columns.size.times do
@@ -476,33 +655,38 @@ module Takarik::Data
 
     # Aggregation methods
     def sum(column : String)
-      @select_clause = "SUM(#{column})"
-      @model_class.connection.scalar(to_sql, args: @where_params)
+      @select_clause = "SUM(\"#{column}\")"
+      all_params = @where_params + @having_params
+      @model_class.connection.scalar(to_sql, args: all_params)
     end
 
     def average(column : String)
-      @select_clause = "AVG(#{column})"
-      @model_class.connection.scalar(to_sql, args: @where_params)
+      @select_clause = "AVG(\"#{column}\")"
+      all_params = @where_params + @having_params
+      @model_class.connection.scalar(to_sql, args: all_params)
     end
 
     def minimum(column : String)
-      @select_clause = "MIN(#{column})"
-      @model_class.connection.scalar(to_sql, args: @where_params)
+      @select_clause = "MIN(\"#{column}\")"
+      all_params = @where_params + @having_params
+      @model_class.connection.scalar(to_sql, args: all_params)
     end
 
     def maximum(column : String)
-      @select_clause = "MAX(#{column})"
-      @model_class.connection.scalar(to_sql, args: @where_params)
+      @select_clause = "MAX(\"#{column}\")"
+      all_params = @where_params + @having_params
+      @model_class.connection.scalar(to_sql, args: all_params)
     end
 
     # Update and delete operations
     def update_all(attributes : Hash(String, DB::Any))
       return 0 if attributes.empty?
 
-      set_clause = attributes.keys.map { |key| "#{key} = ?" }.join(", ")
-      update_params = attributes.values.to_a + @where_params
+      set_clause = attributes.keys.map { |key| "\"#{key}\" = ?" }.join(", ")
+      # Combine parameters: attributes values first, then WHERE params, then HAVING params
+      update_params = attributes.values.to_a + @where_params + @having_params
 
-      sql = "UPDATE #{@model_class.table_name} SET #{set_clause}"
+      sql = "UPDATE \"#{@model_class.table_name}\" SET #{set_clause}"
       unless @where_conditions.empty?
         sql += " WHERE #{@where_conditions.join(" AND ")}"
       end
@@ -516,12 +700,14 @@ module Takarik::Data
     end
 
     def delete_all
-      sql = "DELETE FROM #{@model_class.table_name}"
+      sql = "DELETE FROM \"#{@model_class.table_name}\""
       unless @where_conditions.empty?
         sql += " WHERE #{@where_conditions.join(" AND ")}"
       end
 
-      result = @model_class.connection.exec(sql, args: @where_params)
+      # Combine parameters in the correct order: WHERE params first, then HAVING params
+      all_params = @where_params + @having_params
+      result = @model_class.connection.exec(sql, args: all_params)
       result.rows_affected
     end
 
@@ -584,8 +770,20 @@ module Takarik::Data
 
     # Handle IN clauses with arrays
     def where(column : String, values : Array(DB::Any))
+      # Check if it's a table.column reference
+      quoted_column = if column.includes?(".")
+        parts = column.split(".")
+        if parts.size == 2
+          "\"#{parts[0]}\".\"#{parts[1]}\""
+        else
+          column # Complex expression, leave as-is
+        end
+      else
+        "\"#{column}\"" # Simple column name, quote it
+      end
+
       placeholders = (["?"] * values.size).join(", ")
-      @where_conditions << "#{column} IN (#{placeholders})"
+      @where_conditions << "#{quoted_column} IN (#{placeholders})"
       @where_params.concat(values)
       self
     end

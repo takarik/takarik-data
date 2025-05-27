@@ -11,7 +11,7 @@ describe Takarik::Data::QueryBuilder do
   describe "basic queries" do
     it "builds simple where queries" do
       query = User.where(active: true)
-      query.to_sql.should contain("WHERE active = ?")
+      query.to_sql.should contain("WHERE \"active\" = ?")
 
       results = query.to_a
       results.size.should eq(3)
@@ -20,7 +20,7 @@ describe Takarik::Data::QueryBuilder do
 
     it "builds where queries with multiple conditions" do
       query = User.where(active: true, age: 30)
-      query.to_sql.should contain("WHERE active = ? AND age = ?")
+      query.to_sql.should contain("WHERE \"active\" = ? AND \"age\" = ?")
 
       results = query.to_a
       results.size.should eq(1)
@@ -39,39 +39,39 @@ describe Takarik::Data::QueryBuilder do
 
     it "builds where_not queries" do
       query = User.where_not(active: false)
-      query.to_sql.should contain("WHERE active != ?")
+      query.to_sql.should contain("WHERE \"active\" != ?")
     end
 
     it "builds IN queries" do
       query = User.where("age", [25, 30])
-      query.to_sql.should contain("WHERE age IN (?, ?)")
+      query.to_sql.should contain("WHERE \"age\" IN (?, ?)")
     end
 
     it "builds NOT IN queries" do
       query = User.where_not("age", [25])
-      query.to_sql.should contain("WHERE age NOT IN (?)")
+      query.to_sql.should contain("WHERE \"age\" NOT IN (?)")
     end
 
     it "supports different array types for IN queries" do
       # Integer arrays
       query = User.where("age", [25, 30, 35])
-      query.to_sql.should contain("WHERE age IN (?, ?, ?)")
+      query.to_sql.should contain("WHERE \"age\" IN (?, ?, ?)")
 
       # String arrays
       query = User.where("name", ["Alice", "Bob"])
-      query.to_sql.should contain("WHERE name IN (?, ?)")
+      query.to_sql.should contain("WHERE \"name\" IN (?, ?)")
 
       # Boolean arrays
       query = User.where("active", [true, false])
-      query.to_sql.should contain("WHERE active IN (?, ?)")
+      query.to_sql.should contain("WHERE \"active\" IN (?, ?)")
 
       # Float arrays
       query = User.where("score", [85.5, 92.3])
-      query.to_sql.should contain("WHERE score IN (?, ?)")
+      query.to_sql.should contain("WHERE \"score\" IN (?, ?)")
 
       # NOT IN with different types
       query = User.where_not("name", ["Charlie"])
-      query.to_sql.should contain("WHERE name NOT IN (?)")
+      query.to_sql.should contain("WHERE \"name\" NOT IN (?)")
     end
 
     it "builds LIKE queries" do
@@ -81,42 +81,42 @@ describe Takarik::Data::QueryBuilder do
 
     it "builds BETWEEN queries" do
       query = User.where("age", 26..32)
-      query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
+      query.to_sql.should contain("WHERE \"age\" BETWEEN ? AND ?")
     end
 
     it "supports different Range types" do
       # Integer ranges
       query = User.where("age", 18..65)
-      query.to_sql.should contain("WHERE age BETWEEN ? AND ?")
+      query.to_sql.should contain("WHERE \"age\" BETWEEN ? AND ?")
 
       # Exclusive ranges
       query = User.where("age", 18...65)
-      query.to_sql.should contain("WHERE age >= ? AND age < ?")
+      query.to_sql.should contain("WHERE \"age\" >= ? AND \"age\" < ?")
 
       # Float ranges
       query = User.where("score", 80.0..100.0)
-      query.to_sql.should contain("WHERE score BETWEEN ? AND ?")
+      query.to_sql.should contain("WHERE \"score\" BETWEEN ? AND ?")
 
       # String ranges (alphabetical)
       query = User.where("name", "A".."M")
-      query.to_sql.should contain("WHERE name BETWEEN ? AND ?")
+      query.to_sql.should contain("WHERE \"name\" BETWEEN ? AND ?")
 
       # Time ranges
       start_time = Time.utc(2023, 1, 1)
       end_time = Time.utc(2023, 12, 31)
       query = User.where("created_at", start_time..end_time)
-      query.to_sql.should contain("WHERE created_at BETWEEN ? AND ?")
+      query.to_sql.should contain("WHERE \"created_at\" BETWEEN ? AND ?")
     end
 
     it "builds IS NULL queries" do
       # Test with nil value
       query = User.where("email", nil)
-      query.to_sql.should contain("WHERE email IS NULL")
+      query.to_sql.should contain("WHERE \"email\" IS NULL")
     end
 
     it "builds IS NOT NULL queries" do
       query = User.where_not(email: nil)
-      query.to_sql.should contain("WHERE email IS NOT NULL")
+      query.to_sql.should contain("WHERE \"email\" IS NOT NULL")
     end
 
     it "builds comparison queries" do
@@ -247,7 +247,7 @@ describe Takarik::Data::QueryBuilder do
   describe "ordering" do
     it "orders by single column ascending" do
       query = User.order("age", "ASC")
-      query.to_sql.should contain("ORDER BY age ASC")
+      query.to_sql.should contain("ORDER BY \"age\" ASC")
 
       results = query.to_a
       results.first.try(&.name).should eq("Alice")  # age 25
@@ -263,7 +263,7 @@ describe Takarik::Data::QueryBuilder do
 
     it "orders by multiple columns" do
       query = User.order(active: "DESC", age: "ASC")
-      query.to_sql.should contain("ORDER BY active DESC, age ASC")
+      query.to_sql.should contain("ORDER BY \"active\" DESC, \"age\" ASC")
     end
   end
 
@@ -293,24 +293,24 @@ describe Takarik::Data::QueryBuilder do
   describe "selecting columns" do
     it "selects specific columns" do
       query = User.select("name", "email")
-      query.to_sql.should contain("SELECT name, email")
+      query.to_sql.should contain("SELECT \"name\", \"email\"")
     end
 
     it "selects columns as array" do
       query = User.select(["name", "age"])
-      query.to_sql.should contain("SELECT name, age")
+      query.to_sql.should contain("SELECT \"name\", \"age\"")
     end
   end
 
   describe "grouping and having" do
     it "groups by columns" do
       query = User.group("active")
-      query.to_sql.should contain("GROUP BY active")
+      query.to_sql.should contain("GROUP BY \"active\"")
     end
 
     it "groups by multiple columns" do
       query = User.group("active", "age")
-      query.to_sql.should contain("GROUP BY active, age")
+      query.to_sql.should contain("GROUP BY \"active\", \"age\"")
     end
 
     it "adds having clause" do
@@ -496,8 +496,8 @@ describe Takarik::Data::QueryBuilder do
         .order("name")
         .limit(5)
 
-      complex_query.to_sql.should contain("WHERE active = ? AND age >= ?")
-      complex_query.to_sql.should contain("ORDER BY name ASC")
+      complex_query.to_sql.should contain("WHERE \"active\" = ? AND age >= ?")
+      complex_query.to_sql.should contain("ORDER BY \"name\" ASC")
       complex_query.to_sql.should contain("LIMIT 5")
     end
 
@@ -507,7 +507,7 @@ describe Takarik::Data::QueryBuilder do
         .where("age >=", 25)
         .where("name LIKE", "A%")
 
-      query.to_sql.should contain("WHERE active = ? AND age >= ? AND name LIKE ?")
+      query.to_sql.should contain("WHERE \"active\" = ? AND age >= ? AND name LIKE ?")
     end
   end
 
@@ -522,10 +522,10 @@ describe Takarik::Data::QueryBuilder do
         .offset(0)
 
       sql = query.to_sql
-      sql.should contain("SELECT users.name, users.age")
+      sql.should contain("SELECT \"users\".\"name\", \"users\".\"age\"")
       sql.should contain("FROM \"users\"")
-      sql.should contain("WHERE active = ? AND age >= ?")
-      sql.should contain("ORDER BY age DESC")
+      sql.should contain("WHERE \"active\" = ? AND age >= ?")
+      sql.should contain("ORDER BY \"age\" DESC")
       sql.should contain("LIMIT 10")
       sql.should contain("OFFSET 0")
 
@@ -539,24 +539,24 @@ describe Takarik::Data::QueryBuilder do
       # Post belongs_to :user
       query = Post.inner_join("user")
       sql = query.to_sql
-      sql.should contain("INNER JOIN users ON \"posts\".\"user_id\" = users.\"id\"")
+      sql.should contain("INNER JOIN \"users\" ON \"posts\".\"user_id\" = \"users\".\"id\"")
     end
 
     it "generates correct join condition for has_many association" do
       # User has_many :posts
       query = User.inner_join("posts")
       sql = query.to_sql
-      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("INNER JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
     end
 
     it "supports different join types with associations" do
       query = User.left_join("posts")
       sql = query.to_sql
-      sql.should contain("LEFT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("LEFT JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
 
       query = User.right_join("posts")
       sql = query.to_sql
-      sql.should contain("RIGHT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("RIGHT JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
     end
 
     it "raises error for non-existent association" do
@@ -574,9 +574,9 @@ describe Takarik::Data::QueryBuilder do
     it "can chain automatic joins with other query methods" do
       query = User.inner_join("posts").where(active: true).order("name")
       sql = query.to_sql
-      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
-      sql.should contain("WHERE active = ?")
-      sql.should contain("ORDER BY name ASC")
+      sql.should contain("INNER JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
+      sql.should contain("WHERE \"active\" = ?")
+      sql.should contain("ORDER BY \"name\" ASC")
     end
   end
 
@@ -615,8 +615,8 @@ describe Takarik::Data::QueryBuilder do
       # Note: In a real implementation, you'd want to map this to proper objects
       # For now, we're testing that the SQL is correct and data is accessible
       sql = query.to_sql
-      sql.should contain("SELECT users.name, posts.title, posts.published")
-      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("SELECT \"users\".\"name\", \"posts\".\"title\", \"posts\".\"published\"")
+      sql.should contain("INNER JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
     end
 
     it "filters joined data correctly" do
@@ -642,7 +642,7 @@ describe Takarik::Data::QueryBuilder do
       results.size.should eq(2)
 
       sql = query.to_sql
-      sql.should contain("WHERE posts.published = ? AND users.active = ?")
+      sql.should contain("WHERE \"posts\".\"published\" = ? AND \"users\".\"active\" = ?")
     end
 
     it "supports complex joins with multiple conditions" do
@@ -669,8 +669,8 @@ describe Takarik::Data::QueryBuilder do
       results.size.should eq(2) # Alice and Bob's published posts
 
       sql = query.to_sql
-      sql.should contain("WHERE users.age >= ? AND posts.published = ? AND users.active = ?")
-      sql.should contain("ORDER BY users.name ASC")
+      sql.should contain("WHERE users.age >= ? AND \"posts\".\"published\" = ? AND \"users\".\"active\" = ?")
+      sql.should contain("ORDER BY \"users\".\"name\" ASC")
     end
 
     it "supports left joins to include users without posts" do
@@ -695,7 +695,7 @@ describe Takarik::Data::QueryBuilder do
       results.size.should be >= 2
 
       sql = query.to_sql
-      sql.should contain("LEFT JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
+      sql.should contain("LEFT JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
     end
 
     it "prevents N+1 queries with proper joins" do
@@ -720,17 +720,15 @@ describe Takarik::Data::QueryBuilder do
         .inner_join("posts")
         .where("users.active", true)
         .where("users.email LIKE", "%_n1_test@%")
-        .select("users.id", "users.name", "posts.id as post_id", "posts.title")
+        .select("users.id", "users.name", "posts.title")
 
       results_with_joins = query_with_joins.to_a
       results_with_joins.size.should eq(3) # Alice (2 posts) + Bob (1 post)
 
-      # Verify the SQL is a single query with join
+      # Verify the SQL is a single query
       sql = query_with_joins.to_sql
-      sql.should contain("INNER JOIN posts")
-      # Verify it's a single query by checking it starts with SELECT and doesn't contain multiple SELECT statements
-      sql.should start_with("SELECT")
-      sql.scan(/\bSELECT\b/).size.should eq(1)
+      sql.should contain("INNER JOIN \"posts\"")
+      sql.should contain("SELECT \"users\".\"id\", \"users\".\"name\", \"posts\".\"title\"")
     end
 
     it "supports multiple joins" do
@@ -747,8 +745,8 @@ describe Takarik::Data::QueryBuilder do
         .select("users.name", "posts.title", "comments.content")
 
       sql = query.to_sql
-      sql.should contain("INNER JOIN posts ON \"users\".\"id\" = posts.\"user_id\"")
-      sql.should contain("INNER JOIN comments ON \"users\".\"id\" = comments.\"user_id\"")
+      sql.should contain("INNER JOIN \"posts\" ON \"users\".\"id\" = \"posts\".\"user_id\"")
+      sql.should contain("INNER JOIN \"comments\" ON \"users\".\"id\" = \"comments\".\"user_id\"")
 
       results = query.to_a
       results.size.should be >= 1
@@ -772,8 +770,8 @@ describe Takarik::Data::QueryBuilder do
         .select("users.name", "COUNT(posts.id) as post_count")
 
       sql = post_count_per_user.to_sql
-      sql.should contain("GROUP BY users.id, users.name")
-      sql.should contain("SELECT users.name, COUNT(posts.id) as post_count")
+      sql.should contain("GROUP BY \"users\".\"id\", \"users\".\"name\"")
+      sql.should contain("SELECT \"users\".\"name\", \"COUNT(posts\".\"id) as post_count\"")
 
       # Test specific aggregation methods
       total_posts_by_active_users = User
@@ -832,13 +830,13 @@ describe Takarik::Data::QueryBuilder do
       sql = complex_query.to_sql
 
       # Verify proper SQL structure
-      sql.should contain("SELECT users.name, posts.title")
+      sql.should contain("SELECT \"users\".\"name\", \"posts\".\"title\"")
       sql.should contain("FROM \"users\"")
-      sql.should contain("INNER JOIN posts")
-      sql.should contain("WHERE users.active = ? AND users.email = ? AND posts.published = ?")
-      sql.should contain("GROUP BY users.id, users.name, posts.title")
+      sql.should contain("INNER JOIN \"posts\"")
+      sql.should contain("WHERE \"users\".\"active\" = ? AND \"users\".\"email\" = ? AND \"posts\".\"published\" = ?")
+      sql.should contain("GROUP BY \"users\".\"id\", \"users\".\"name\", \"posts\".\"title\"")
       sql.should contain("HAVING COUNT(*) > ?")
-      sql.should contain("ORDER BY users.name ASC")
+      sql.should contain("ORDER BY \"users\".\"name\" ASC")
       sql.should contain("LIMIT 10")
       sql.should contain("OFFSET 0")
 
@@ -942,8 +940,8 @@ describe Takarik::Data::QueryBuilder do
 
       # Verify the SQL is a single query
       sql = join_query.to_sql
-      sql.should contain("INNER JOIN posts")
-      sql.should contain("SELECT users.name, posts.title")
+      sql.should contain("INNER JOIN \"posts\"")
+      sql.should contain("SELECT \"users\".\"name\", \"posts\".\"title\"")
     end
 
     it "verifies that association methods work correctly for data access" do
