@@ -52,6 +52,189 @@ module Takarik::Data
       QueryBuilder(self).new(self)
     end
 
+    # Shared macro for property definition with getter/setter
+    macro define_property_with_accessors(name, type)
+      # Register this column name (without quotes)
+      add_column_name({{name.id.stringify}})
+
+      {% if type == Int32 %}
+        property {{name.id}} : Int32?
+      {% elsif type == Int64 %}
+        property {{name.id}} : Int64?
+      {% elsif type == String %}
+        property {{name.id}} : String?
+      {% elsif type == Bool %}
+        property {{name.id}} : Bool?
+      {% elsif type == Time %}
+        property {{name.id}} : Time?
+      {% elsif type == Float64 %}
+        property {{name.id}} : Float64?
+      {% else %}
+        property {{name.id}} : {{type}}?
+      {% end %}
+
+      # Override setter to track changes and sync with attributes
+      def {{name.id}}=(value : {{type}}?)
+        old_value = @{{name.id}}
+        @{{name.id}} = value
+
+        # Also update the attributes hash
+        if value.nil?
+          @attributes.delete({{name.stringify}})
+        else
+          @attributes[{{name.stringify}}] = value.as(DB::Any)
+        end
+
+        # Track changes
+        if old_value != value
+          @changed_attributes << {{name.stringify}}
+        end
+        value
+      end
+
+      # Override getter to return from instance variable or attributes
+      def {{name.id}}
+        if @{{name.id}}
+          @{{name.id}}
+        elsif @attributes.has_key?({{name.stringify}})
+          value = @attributes[{{name.stringify}}]
+          {% if type == Int32 %}
+            case value
+            when Int32
+              value
+            when Int64
+              value.to_i32
+            when String
+              value.to_i32?
+            else
+              nil
+            end
+          {% elsif type == Int64 %}
+            case value
+            when Int64
+              value
+            when Int32
+              value.to_i64
+            when String
+              value.to_i64?
+            else
+              nil
+            end
+          {% elsif type == String %}
+            case value
+            when String
+              value
+            when Nil
+              nil
+            else
+              value.to_s
+            end
+          {% elsif type == Bool %}
+            case value
+            when 1, "1", "true", "t", true
+              true
+            when 0, "0", "false", "f", false, nil
+              false
+            else
+              nil
+            end
+          {% elsif type == Float64 %}
+            case value
+            when Float64
+              value
+            when Int32, Int64
+              value.to_f64
+            when String
+              value.to_f64?
+            else
+              nil
+            end
+          {% elsif type == Time %}
+            value.is_a?(Time) ? value : nil
+          {% else %}
+            value.as?({{type}})
+          {% end %}
+        else
+          nil
+        end
+      end
+    end
+
+    # Shared macro for instance variable assignment in loops
+    macro assign_instance_variables_from_attributes
+      {% begin %}
+        case column_name
+        {% for ivar in @type.instance_vars %}
+          {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
+            when {{ivar.name.stringify}}
+              # Extract the type from the instance variable type and do direct assignment
+              {% if ivar.type.stringify.includes?("Int32") %}
+                @{{ivar.name}} = case value
+                when Int32
+                  value
+                when Int64
+                  value.to_i32
+                when String
+                  value.to_i32?
+                else
+                  nil
+                end
+              {% elsif ivar.type.stringify.includes?("Int64") %}
+                @{{ivar.name}} = case value
+                when Int64
+                  value
+                when Int32
+                  value.to_i64
+                when String
+                  value.to_i64?
+                else
+                  nil
+                end
+              {% elsif ivar.type.stringify.includes?("String") %}
+                @{{ivar.name}} = case value
+                when String
+                  value
+                when Nil
+                  nil
+                else
+                  value.to_s
+                end
+              {% elsif ivar.type.stringify.includes?("Bool") %}
+                @{{ivar.name}} = case value
+                when 1, "1", "true", "t", true
+                  true
+                when 0, "0", "false", "f", false, nil
+                  false
+                else
+                  nil
+                end
+              {% elsif ivar.type.stringify.includes?("Float64") %}
+                @{{ivar.name}} = case value
+                when Float64
+                  value
+                when Int32, Int64
+                  value.to_f64
+                when String
+                  value.to_f64?
+                else
+                  nil
+                end
+              {% elsif ivar.type.stringify.includes?("Time") %}
+                @{{ivar.name}} = value.is_a?(Time) ? value : nil
+              {% else %}
+                @{{ivar.name}} = value.as?({{ivar.type}})
+              {% end %}
+          {% end %}
+        {% end %}
+        end
+      {% end %}
+    end
+
+    # Helper method to set a single instance variable
+    private def set_single_instance_variable(column_name : String, value : DB::Any)
+      assign_instance_variables_from_attributes
+    end
+
     # Macro to generate where method overloads for BaseModel
     macro generate_base_model_where_overloads
       {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time, DB::Any] %}
@@ -283,82 +466,7 @@ module Takarik::Data
 
     # Macro to define the primary key column
     macro primary_key(name = "id", type = Int64, **options)
-      # Register this column name (without quotes)
-      add_column_name({{name.id.stringify}})
-
-      {% if type == Int32 %}
-        property {{name.id}} : Int32?
-      {% elsif type == Int64 %}
-        property {{name.id}} : Int64?
-      {% elsif type == String %}
-        property {{name.id}} : String?
-      {% else %}
-        property {{name.id}} : {{type}}?
-      {% end %}
-
-      # Override setter to track changes and sync with attributes
-      def {{name.id}}=(value : {{type}}?)
-        old_value = @{{name.id}}
-        @{{name.id}} = value
-
-        # Also update the attributes hash
-        if value.nil?
-          @attributes.delete({{name.stringify}})
-        else
-          @attributes[{{name.stringify}}] = value.as(DB::Any)
-        end
-
-        # Track changes
-        if old_value != value
-          @changed_attributes << {{name.stringify}}
-        end
-        value
-      end
-
-      # Override getter to return from instance variable or attributes
-      def {{name.id}}
-        if @{{name.id}}
-          @{{name.id}}
-        elsif @attributes.has_key?({{name.stringify}})
-          value = @attributes[{{name.stringify}}]
-          {% if type == Int32 %}
-            case value
-            when Int32
-              value
-            when Int64
-              value.to_i32
-            when String
-              value.to_i32?
-            else
-              nil
-            end
-          {% elsif type == Int64 %}
-            case value
-            when Int64
-              value
-            when Int32
-              value.to_i64
-            when String
-              value.to_i64?
-            else
-              nil
-            end
-          {% elsif type == String %}
-            case value
-            when String
-              value
-            when Nil
-              nil
-            else
-              value.to_s
-            end
-          {% else %}
-            value.as?({{type}})
-          {% end %}
-        else
-          nil
-        end
-      end
+      define_property_with_accessors({{name}}, {{type}})
 
       # Override the class method to return the primary key name
       def self.primary_key
@@ -368,110 +476,7 @@ module Takarik::Data
 
     # Macro to define database columns with types
     macro column(name, type, **options)
-      # Register this column name (without quotes)
-      add_column_name({{name.id.stringify}})
-
-      {% if type == Int32 %}
-        property {{name.id}} : Int32?
-      {% elsif type == Int64 %}
-        property {{name.id}} : Int64?
-      {% elsif type == String %}
-        property {{name.id}} : String?
-      {% elsif type == Bool %}
-        property {{name.id}} : Bool?
-      {% elsif type == Time %}
-        property {{name.id}} : Time?
-      {% elsif type == Float64 %}
-        property {{name.id}} : Float64?
-      {% else %}
-        property {{name.id}} : {{type}}?
-      {% end %}
-
-      # Override setter to track changes and sync with attributes
-      def {{name.id}}=(value : {{type}}?)
-        old_value = @{{name.id}}
-        @{{name.id}} = value
-
-        # Also update the attributes hash
-        if value.nil?
-          @attributes.delete({{name.stringify}})
-        else
-          @attributes[{{name.stringify}}] = value.as(DB::Any)
-        end
-
-        # Track changes
-        if old_value != value
-          @changed_attributes << {{name.stringify}}
-        end
-        value
-      end
-
-      # Override getter to return from instance variable or attributes
-      def {{name.id}}
-        if @{{name.id}}
-          @{{name.id}}
-        elsif @attributes.has_key?({{name.stringify}})
-          value = @attributes[{{name.stringify}}]
-          {% if type == Int32 %}
-            case value
-            when Int32
-              value
-            when Int64
-              value.to_i32
-            when String
-              value.to_i32?
-            else
-              nil
-            end
-          {% elsif type == Int64 %}
-            case value
-            when Int64
-              value
-            when Int32
-              value.to_i64
-            when String
-              value.to_i64?
-            else
-              nil
-            end
-          {% elsif type == String %}
-            case value
-            when String
-              value
-            when Nil
-              nil
-            else
-              value.to_s
-            end
-          {% elsif type == Bool %}
-            case value
-            when 1, "1", "true", "t", true
-              true
-            when 0, "0", "false", "f", false, nil
-              false
-            else
-              nil
-            end
-          {% elsif type == Float64 %}
-            case value
-            when Float64
-              value
-            when Int32, Int64
-              value.to_f64
-            when String
-              value.to_f64?
-            else
-              nil
-            end
-          {% elsif type == Time %}
-            value.is_a?(Time) ? value : nil
-          {% else %}
-            value.as?({{type}})
-          {% end %}
-        else
-          nil
-        end
-      end
+      define_property_with_accessors({{name}}, {{type}})
 
       # Add to JSON serialization
       def {{name.id}}_json
@@ -603,72 +608,7 @@ module Takarik::Data
       @changed_attributes << name
 
       # Also set the instance variable if it exists
-      {% begin %}
-        case name
-        {% for ivar in @type.instance_vars %}
-          {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
-            when {{ivar.name.stringify}}
-              # Handle type conversion for common database types
-              {% if ivar.type.stringify.includes?("Int32") %}
-                @{{ivar.name}} = case value
-                  when Int32
-                    value
-                  when Int64
-                    value.to_i32
-                  when String
-                    value.to_i32?
-                  else
-                    nil
-                  end
-              {% elsif ivar.type.stringify.includes?("Int64") %}
-                @{{ivar.name}} = case value
-                  when Int64
-                    value
-                  when Int32
-                    value.to_i64
-                  when String
-                    value.to_i64?
-                  else
-                    nil
-                  end
-              {% elsif ivar.type.stringify.includes?("String") %}
-                @{{ivar.name}} = case value
-                  when String
-                    value
-                  when Nil
-                    nil
-                  else
-                    value.to_s
-                  end
-              {% elsif ivar.type.stringify.includes?("Bool") %}
-                @{{ivar.name}} = case value
-                  when 1, "1", "true", "t", true
-                    true
-                  when 0, "0", "false", "f", false, nil
-                    false
-                  else
-                    nil
-                  end
-              {% elsif ivar.type.stringify.includes?("Float64") %}
-                @{{ivar.name}} = case value
-                  when Float64
-                    value
-                  when Int32, Int64
-                    value.to_f64
-                  when String
-                    value.to_f64?
-                  else
-                    nil
-                  end
-              {% elsif ivar.type.stringify.includes?("Time") %}
-                @{{ivar.name}} = value.is_a?(Time) ? value : nil
-              {% else %}
-                @{{ivar.name}} = value.as?({{ivar.type}})
-              {% end %}
-          {% end %}
-        {% end %}
-        end
-      {% end %}
+      set_single_instance_variable(name, value)
     end
 
     def get_attribute(name : String)
@@ -741,78 +681,7 @@ module Takarik::Data
 
       if fresh_record
         @attributes = fresh_record.@attributes
-
-        # Also sync all instance variables from the fresh record
-        @attributes.each do |column_name, value|
-          # Also set the instance variable if it exists
-          {% begin %}
-            case column_name
-            {% for ivar in @type.instance_vars %}
-              {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
-                when {{ivar.name.stringify}}
-                  # Handle type conversion for common database types
-                  {% if ivar.type.stringify.includes?("Int32") %}
-                    @{{ivar.name}} = case value
-                      when Int32
-                        value
-                      when Int64
-                        value.to_i32
-                      when String
-                        value.to_i32?
-                      else
-                        nil
-                      end
-                  {% elsif ivar.type.stringify.includes?("Int64") %}
-                    @{{ivar.name}} = case value
-                      when Int64
-                        value
-                      when Int32
-                        value.to_i64
-                      when String
-                        value.to_i64?
-                      else
-                        nil
-                      end
-                  {% elsif ivar.type.stringify.includes?("String") %}
-                    @{{ivar.name}} = case value
-                      when String
-                        value
-                      when Nil
-                        nil
-                      else
-                        value.to_s
-                      end
-                  {% elsif ivar.type.stringify.includes?("Bool") %}
-                    @{{ivar.name}} = case value
-                      when 1, "1", "true", "t", true
-                        true
-                      when 0, "0", "false", "f", false, nil
-                        false
-                      else
-                        nil
-                      end
-                  {% elsif ivar.type.stringify.includes?("Float64") %}
-                    @{{ivar.name}} = case value
-                      when Float64
-                        value
-                      when Int32, Int64
-                        value.to_f64
-                      when String
-                        value.to_f64?
-                      else
-                        nil
-                      end
-                  {% elsif ivar.type.stringify.includes?("Time") %}
-                    @{{ivar.name}} = value.is_a?(Time) ? value : nil
-                  {% else %}
-                    @{{ivar.name}} = value.as?({{ivar.type}})
-                  {% end %}
-              {% end %}
-            {% end %}
-            end
-          {% end %}
-        end
-
+        sync_instance_variables_from_attributes
         @changed_attributes.clear
         self
       else
@@ -833,6 +702,13 @@ module Takarik::Data
       self_id == other_id
     end
 
+    # Helper method to sync instance variables from attributes
+    private def sync_instance_variables_from_attributes
+      @attributes.each do |column_name, value|
+        assign_instance_variables_from_attributes
+      end
+    end
+
     # Protected methods for internal use
     protected def load_from_result_set(rs : DB::ResultSet)
       rs.column_names.each_with_index do |column_name, index|
@@ -840,77 +716,7 @@ module Takarik::Data
         @attributes[column_name] = value
       end
 
-      # Now set all instance variables from the attributes
-      @attributes.each do |column_name, value|
-        # Also set the instance variable if it exists
-        {% begin %}
-          case column_name
-          {% for ivar in @type.instance_vars %}
-            {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
-              when {{ivar.name.stringify}}
-                # Handle type conversion for common database types
-                {% if ivar.type.stringify.includes?("Int32") %}
-                  @{{ivar.name}} = case value
-                    when Int32
-                      value
-                    when Int64
-                      value.to_i32
-                    when String
-                      value.to_i32?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Int64") %}
-                  @{{ivar.name}} = case value
-                    when Int64
-                      value
-                    when Int32
-                      value.to_i64
-                    when String
-                      value.to_i64?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("String") %}
-                  @{{ivar.name}} = case value
-                    when String
-                      value
-                    when Nil
-                      nil
-                    else
-                      value.to_s
-                    end
-                {% elsif ivar.type.stringify.includes?("Bool") %}
-                  @{{ivar.name}} = case value
-                    when 1, "1", "true", "t", true
-                      true
-                    when 0, "0", "false", "f", false, nil
-                      false
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Float64") %}
-                  @{{ivar.name}} = case value
-                    when Float64
-                      value
-                    when Int32, Int64
-                      value.to_f64
-                    when String
-                      value.to_f64?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Time") %}
-                  @{{ivar.name}} = value.is_a?(Time) ? value : nil
-                {% else %}
-                  @{{ivar.name}} = value.as?({{ivar.type}})
-                {% end %}
-            {% end %}
-          {% end %}
-          end
-        {% end %}
-      end
-
+      sync_instance_variables_from_attributes
       @persisted = true
       @changed_attributes.clear
     end
@@ -930,77 +736,7 @@ module Takarik::Data
         end
       end
 
-      # Now set all instance variables from the attributes
-      @attributes.each do |column_name, value|
-        # Also set the instance variable if it exists
-        {% begin %}
-          case column_name
-          {% for ivar in @type.instance_vars %}
-            {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
-              when {{ivar.name.stringify}}
-                # Handle type conversion for common database types
-                {% if ivar.type.stringify.includes?("Int32") %}
-                  @{{ivar.name}} = case value
-                    when Int32
-                      value
-                    when Int64
-                      value.to_i32
-                    when String
-                      value.to_i32?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Int64") %}
-                  @{{ivar.name}} = case value
-                    when Int64
-                      value
-                    when Int32
-                      value.to_i64
-                    when String
-                      value.to_i64?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("String") %}
-                  @{{ivar.name}} = case value
-                    when String
-                      value
-                    when Nil
-                      nil
-                    else
-                      value.to_s
-                    end
-                {% elsif ivar.type.stringify.includes?("Bool") %}
-                  @{{ivar.name}} = case value
-                    when 1, "1", "true", "t", true
-                      true
-                    when 0, "0", "false", "f", false, nil
-                      false
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Float64") %}
-                  @{{ivar.name}} = case value
-                    when Float64
-                      value
-                    when Int32, Int64
-                      value.to_f64
-                    when String
-                      value.to_f64?
-                    else
-                      nil
-                    end
-                {% elsif ivar.type.stringify.includes?("Time") %}
-                  @{{ivar.name}} = value.is_a?(Time) ? value : nil
-                {% else %}
-                  @{{ivar.name}} = value.as?({{ivar.type}})
-                {% end %}
-            {% end %}
-          {% end %}
-          end
-        {% end %}
-      end
-
+      sync_instance_variables_from_attributes
       @persisted = true
       @changed_attributes.clear
     end
@@ -1019,8 +755,9 @@ module Takarik::Data
         if self.class.primary_key == "id" && !@attributes.has_key?("id")
           id_value = result.last_insert_id
           @attributes["id"] = id_value.as(DB::Any)
-          # Also set the instance variable
-          set_attribute("id", id_value.as(DB::Any))
+          # Also set the instance variable directly without going through set_attribute
+          # to avoid adding it to changed_attributes
+          set_single_instance_variable("id", id_value.as(DB::Any))
         end
         @persisted = true
         @changed_attributes.clear
