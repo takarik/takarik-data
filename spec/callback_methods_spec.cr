@@ -79,6 +79,8 @@ class AllCallbacksUser < Takarik::Data::BaseModel
   column name, String
   column email, String
 
+  before_validation :log_before_validation
+  after_validation :log_after_validation
   before_save :log_before_save
   after_save :log_after_save
   before_create :log_before_create
@@ -87,6 +89,14 @@ class AllCallbacksUser < Takarik::Data::BaseModel
   after_update :log_after_update
   before_destroy :log_before_destroy
   after_destroy :log_after_destroy
+
+  private def log_before_validation
+    self.email = (self.email || "") + "before_validation;"
+  end
+
+  private def log_after_validation
+    self.email = (self.email || "") + "after_validation;"
+  end
 
   private def log_before_save
     self.email = (self.email || "") + "before_save;"
@@ -118,6 +128,35 @@ class AllCallbacksUser < Takarik::Data::BaseModel
 
   private def log_after_destroy
     self.email = (self.email || "") + "after_destroy;"
+  end
+end
+
+class ValidationCallbackUser < Takarik::Data::BaseModel
+  table_name "users"
+  primary_key id, Int32
+  column name, String
+  column email, String
+
+  # Method-based validation callbacks
+  before_validation :normalize_name
+  after_validation :log_validation_done
+
+  # Block-based validation callbacks
+  before_validation do
+    self.email = (self.email || "") + "before_validation_block;"
+  end
+
+  after_validation do
+    self.email = (self.email || "") + "after_validation_block;"
+  end
+
+  private def normalize_name
+    self.email = (self.email || "") + "before_validation_method;"
+    self.name = self.name.try(&.strip.capitalize) if self.name
+  end
+
+  private def log_validation_done
+    self.email = (self.email || "") + "after_validation_method;"
   end
 end
 
@@ -157,20 +196,33 @@ describe "Callback Methods and Blocks" do
       user.email = ""
       user.save
 
-      user.email.should eq("before_save;before_create;after_create;after_save;")
+      user.email.should eq("before_validation;after_validation;before_save;before_create;after_create;after_save;")
 
       # Test UPDATE
       user.email = ""
       user.name = "Updated Name"
       user.save
 
-      user.email.should eq("before_save;before_update;after_update;after_save;")
+      user.email.should eq("before_validation;after_validation;before_save;before_update;after_update;after_save;")
 
       # Test DESTROY
       user.email = ""
       user.destroy
 
       user.email.should eq("before_destroy;after_destroy;")
+    end
+
+    it "supports validation callbacks with both methods and blocks" do
+      user = ValidationCallbackUser.new
+      user.name = "  test user  "
+      user.email = ""
+      user.save
+
+      # Should execute validation callbacks in definition order: before_validation method → before_validation block → after_validation method → after_validation block
+      user.email.should eq("before_validation_method;before_validation_block;after_validation_method;after_validation_block;")
+
+      # Should also normalize the name
+      user.name.should eq("Test user")
     end
   end
 end

@@ -499,6 +499,38 @@ module Takarik::Data
       {% end %}
     end
 
+    macro before_validation(method_name = nil, &block)
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_validation_callback_") }.size
+      %}
+
+      {% if method_name %}
+        def before_validation_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def before_validation_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    macro after_validation(method_name = nil, &block)
+      {%
+        callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_validation_callback_") }.size
+      %}
+
+      {% if method_name %}
+        def after_validation_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_validation_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
     # Methods to execute callbacks by calling all numbered callback methods
     private def run_before_save_callbacks
       {% for method in @type.methods %}
@@ -559,6 +591,22 @@ module Takarik::Data
     private def run_after_destroy_callbacks
       {% for method in @type.methods %}
         {% if method.name.stringify.starts_with?("after_destroy_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_before_validation_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_validation_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_validation_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_validation_callback_") %}
           {{method.name.id}}
         {% end %}
       {% end %}
@@ -731,9 +779,20 @@ module Takarik::Data
     end
 
     def save
+      # Run before_validation callbacks
+      run_before_validation_callbacks
+
       # Run validation if the model includes validations
       {% if @type.ancestors.any? { |a| a.name.stringify.includes?("Validations") } %}
-        return false unless valid?
+        valid_result = valid?
+
+        # Run after_validation callbacks
+        run_after_validation_callbacks
+
+        return false unless valid_result
+      {% else %}
+        # Run after_validation callbacks even if no validations module
+        run_after_validation_callbacks
       {% end %}
 
       result = if new_record?
@@ -746,14 +805,31 @@ module Takarik::Data
     end
 
     def save!
+      # Run before_validation callbacks
+      run_before_validation_callbacks
+
       # Run validation if the model includes validations
       {% if @type.ancestors.any? { |a| a.name.stringify.includes?("Validations") } %}
-        unless valid?
+        valid_result = valid?
+
+        # Run after_validation callbacks
+        run_after_validation_callbacks
+
+        unless valid_result
           raise Takarik::Data::Validations::ValidationError.new(@validation_errors)
         end
+      {% else %}
+        # Run after_validation callbacks even if no validations module
+        run_after_validation_callbacks
       {% end %}
 
-      save || raise "Failed to save record"
+      result = if new_record?
+        insert_record
+      else
+        update_record if changed?
+      end
+
+      result || raise "Failed to save record"
     end
 
     def update(attributes : Hash(String, DB::Any))
