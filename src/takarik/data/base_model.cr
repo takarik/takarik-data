@@ -708,7 +708,7 @@ module Takarik::Data
     end
 
     def self.table_name
-      self.name.split("::").last.underscore.pluralize
+      self.name.split("::").last.tableize
     end
 
     # Query methods
