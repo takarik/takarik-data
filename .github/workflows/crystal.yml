@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install system dependencies
+      run: apt-get update && apt-get install -y libsqlite3-dev
     - name: Install dependencies
       run: shards install
     - name: Run tests
