@@ -380,12 +380,20 @@ module Takarik::Data
         def before_save_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -393,12 +401,20 @@ module Takarik::Data
         def before_save_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -414,12 +430,20 @@ module Takarik::Data
         def after_save_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -427,12 +451,20 @@ module Takarik::Data
         def after_save_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -448,12 +480,20 @@ module Takarik::Data
         def before_create_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -461,12 +501,20 @@ module Takarik::Data
         def before_create_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -482,12 +530,20 @@ module Takarik::Data
         def after_create_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -495,12 +551,20 @@ module Takarik::Data
         def after_create_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -516,12 +580,20 @@ module Takarik::Data
         def before_update_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -529,12 +601,20 @@ module Takarik::Data
         def before_update_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -550,12 +630,20 @@ module Takarik::Data
         def after_update_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -563,12 +651,20 @@ module Takarik::Data
         def after_update_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -584,12 +680,20 @@ module Takarik::Data
         def before_destroy_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -597,12 +701,20 @@ module Takarik::Data
         def before_destroy_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -618,12 +730,20 @@ module Takarik::Data
         def after_destroy_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -631,12 +751,20 @@ module Takarik::Data
         def after_destroy_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -652,12 +780,20 @@ module Takarik::Data
         def before_validation_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -665,12 +801,20 @@ module Takarik::Data
         def before_validation_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end
@@ -686,12 +830,20 @@ module Takarik::Data
         def after_validation_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{method_name.id}}
         end
@@ -699,12 +851,20 @@ module Takarik::Data
         def after_validation_callback_{{callback_num}}
           # Check conditions before executing callback
           {% if condition_if %}
-            condition_result = ({{condition_if}}).call
-            return unless condition_result
+            {% if condition_if.is_a?(SymbolLiteral) %}
+              condition_if_result = {{condition_if.id}}
+            {% else %}
+              condition_if_result = ({{condition_if}}).call
+            {% end %}
+            return unless condition_if_result
           {% end %}
           {% if condition_unless %}
-            condition_result = ({{condition_unless}}).call
-            return if condition_result
+            {% if condition_unless.is_a?(SymbolLiteral) %}
+              condition_unless_result = {{condition_unless.id}}
+            {% else %}
+              condition_unless_result = ({{condition_unless}}).call
+            {% end %}
+            return if condition_unless_result
           {% end %}
           {{block.body}}
         end

@@ -199,6 +199,55 @@ class ConditionalCallbackTestUser < Takarik::Data::BaseModel
   end
 end
 
+class SymbolConditionUser < Takarik::Data::BaseModel
+  table_name "users"
+  primary_key id, Int32
+  column name, String
+  column email, String
+
+  # Symbol-based conditional callbacks
+  before_save :admin_callback, if: :is_admin?
+  before_save :regular_callback, unless: :is_admin?
+
+  # Block callbacks with symbol conditions
+  before_save(if: :is_vip?) do
+    self.email = (self.email || "") + "vip;"
+  end
+
+  before_save(unless: :has_valid_email?) do
+    self.email = (self.email || "user") + "@example.com"
+  end
+
+  # Mixed symbol and proc conditions
+  after_save :notification_callback, if: :has_valid_email?, unless: -> { name.try(&.includes?("Test")) || false }
+
+  # Predicate methods
+  def is_admin?
+    name.try(&.downcase.includes?("admin")) || false
+  end
+
+  def is_vip?
+    name.try(&.includes?("VIP")) || false
+  end
+
+  def has_valid_email?
+    email.try(&.includes?("@")) || false
+  end
+
+  # Callback methods
+  private def admin_callback
+    self.email = (self.email || "") + "admin;"
+  end
+
+  private def regular_callback
+    self.email = (self.email || "") + "regular;"
+  end
+
+  private def notification_callback
+    self.email = (self.email || "") + "notification;"
+  end
+end
+
 describe "Callback Methods and Blocks" do
   describe "mixed callback types" do
     it "supports both method names and blocks" do
@@ -299,6 +348,48 @@ describe "Callback Methods and Blocks" do
 
       # Test user that should not get notification (has "Test" in name)
       test_user = ConditionalCallbackTestUser.new
+      test_user.name = "Test User"
+      test_user.email = "test@example.com"
+      test_user.save
+
+      test_user.email.should eq("test@example.com" + "regular;")
+    end
+
+    it "supports symbol-based conditional callbacks" do
+      # Test admin user with symbol condition
+      admin_user = SymbolConditionUser.new
+      admin_user.name = "Admin User"
+      admin_user.email = "admin@example.com"
+      admin_user.save
+
+      admin_user.email.should eq("admin@example.com" + "admin;" + "notification;")
+
+      # Test regular user with symbol condition
+      regular_user = SymbolConditionUser.new
+      regular_user.name = "Regular User"
+      regular_user.email = "user@example.com"
+      regular_user.save
+
+      regular_user.email.should eq("user@example.com" + "regular;" + "notification;")
+
+      # Test VIP user with symbol condition
+      vip_user = SymbolConditionUser.new
+      vip_user.name = "VIP Customer"
+      vip_user.email = "vip@example.com"
+      vip_user.save
+
+      vip_user.email.should eq("vip@example.com" + "regular;" + "vip;" + "notification;")
+
+      # Test user with invalid email (symbol condition)
+      invalid_email_user = SymbolConditionUser.new
+      invalid_email_user.name = "Bad Email User"
+      invalid_email_user.email = "bademail"
+      invalid_email_user.save
+
+      invalid_email_user.email.should eq("bademailregular;@example.comnotification;")
+
+      # Test user that should not get notification (mixed symbol and proc conditions)
+      test_user = SymbolConditionUser.new
       test_user.name = "Test User"
       test_user.email = "test@example.com"
       test_user.save
