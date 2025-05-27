@@ -286,7 +286,7 @@ module Takarik::Data
     end
 
     def changed?
-      !@changed_attributes.empty?
+      @changed_attributes.any?
     end
 
     def changed_attributes
@@ -499,7 +499,7 @@ module Takarik::Data
       if result.rows_affected > 0
         # Get the inserted ID if it's an auto-increment primary key and not already set
         primary_key_name = self.class.primary_key
-        if !@attributes.has_key?(primary_key_name)
+        unless @attributes.has_key?(primary_key_name)
           id_value = result.last_insert_id
           @attributes[primary_key_name] = id_value.as(DB::Any)
           # Also set the instance variable directly without going through set_attribute
