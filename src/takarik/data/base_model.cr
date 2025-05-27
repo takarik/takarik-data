@@ -370,86 +370,133 @@ module Takarik::Data
     # Callbacks support - refactored to support multiple callbacks
     # Simple approach: use incremental counters for each callback type
 
-    # Callback registration macros
-    macro before_save(&block)
+    # Callback registration macros - support both blocks and method names
+    macro before_save(method_name = nil, &block)
       {%
-        # Use a simple counter based on existing methods
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_save_callback_") }.size
       %}
 
-      def before_save_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def before_save_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def before_save_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro after_save(&block)
+    macro after_save(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_save_callback_") }.size
       %}
 
-      def after_save_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def after_save_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_save_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro before_create(&block)
+    macro before_create(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_create_callback_") }.size
       %}
 
-      def before_create_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def before_create_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def before_create_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro after_create(&block)
+    macro after_create(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_create_callback_") }.size
       %}
 
-      def after_create_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def after_create_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_create_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro before_update(&block)
+    macro before_update(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_update_callback_") }.size
       %}
 
-      def before_update_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def before_update_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def before_update_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro after_update(&block)
+    macro after_update(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_update_callback_") }.size
       %}
 
-      def after_update_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def after_update_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_update_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro before_destroy(&block)
+    macro before_destroy(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_destroy_callback_") }.size
       %}
 
-      def before_destroy_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def before_destroy_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def before_destroy_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
-    macro after_destroy(&block)
+    macro after_destroy(method_name = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_destroy_callback_") }.size
       %}
 
-      def after_destroy_callback_{{callback_num}}
-        {{block.body}}
-      end
+      {% if method_name %}
+        def after_destroy_callback_{{callback_num}}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_destroy_callback_{{callback_num}}
+          {{block.body}}
+        end
+      {% end %}
     end
 
     # Methods to execute callbacks by calling all numbered callback methods
@@ -689,17 +736,11 @@ module Takarik::Data
         return false unless valid?
       {% end %}
 
-      # Run before_save callbacks
-      run_before_save_callbacks
-
       result = if new_record?
         insert_record
       else
         update_record if changed?
       end
-
-      # Run after_save callbacks if save was successful
-      run_after_save_callbacks if result
 
       result
     end
@@ -816,7 +857,10 @@ module Takarik::Data
     end
 
     private def insert_record
-      # Run before_create callbacks first, before capturing columns
+      # Run before_save callbacks first
+      run_before_save_callbacks
+
+      # Run before_create callbacks
       run_before_create_callbacks
 
       columns = @attributes.keys
@@ -842,6 +886,9 @@ module Takarik::Data
         # Run after_create callbacks
         run_after_create_callbacks
 
+        # Run after_save callbacks
+        run_after_save_callbacks
+
         true
       else
         false
@@ -851,7 +898,10 @@ module Takarik::Data
     private def update_record
       return false if @changed_attributes.empty?
 
-      # Run before_update callbacks first, before capturing changed attributes
+      # Run before_save callbacks first
+      run_before_save_callbacks
+
+      # Run before_update callbacks
       run_before_update_callbacks
 
       set_clause = @changed_attributes.map { |attr| "#{attr} = ?" }.join(", ")
@@ -868,6 +918,9 @@ module Takarik::Data
 
         # Run after_update callbacks
         run_after_update_callbacks
+
+        # Run after_save callbacks
+        run_after_save_callbacks
 
         true
       else
