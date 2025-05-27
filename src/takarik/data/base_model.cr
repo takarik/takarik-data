@@ -31,6 +31,9 @@ module Takarik::Data
     # Class variable to store column names for each model
     @@column_names = {} of String => Array(String)
 
+    # Class variable to store primary key name for each model
+    @@primary_key_name = "id"
+
     # Instance variables
     @attributes = {} of String => DB::Any
     @persisted = false
@@ -269,6 +272,20 @@ module Takarik::Data
 
     # Generate all the where method overloads for BaseModel
     generate_base_model_where_overloads
+
+    # Internal macro for setting up default primary key (used by inherited)
+    macro setup_default_primary_key
+      define_property_with_accessors(id, Int64)
+
+      # Define class variable for this model's primary key
+      @@primary_key_name = "id"
+    end
+
+    # Automatically define id property if no primary_key macro is called
+    macro inherited
+      # Call internal macro to set up defaults (can be overridden by explicit primary_key call)
+      setup_default_primary_key
+    end
 
     # Chainable query methods - return QueryBuilder for chaining
     def self.where_not(**conditions)
@@ -668,17 +685,15 @@ module Takarik::Data
     end
 
     # Macro to define the primary key column
-    macro primary_key(name = "id", type = Int64, **options)
+    macro primary_key(name, type = Int64)
       define_property_with_accessors({{name}}, {{type}})
 
-      # Override the class method to return the primary key name
-      def self.primary_key
-        {% if name.is_a?(SymbolLiteral) %}
-          {{name.id.stringify}}
-        {% else %}
-          {{name}}
-        {% end %}
-      end
+      # Set the primary key name in the class variable
+      @@primary_key_name = {% if name.is_a?(SymbolLiteral) %}
+        {{name.id.stringify}}
+      {% else %}
+        {{name}}
+      {% end %}
     end
 
     # Macro to define database columns with types
@@ -709,6 +724,10 @@ module Takarik::Data
 
     def self.table_name
       self.name.split("::").last.tableize
+    end
+
+    def self.primary_key
+      @@primary_key_name
     end
 
     # Query methods
@@ -844,10 +863,10 @@ module Takarik::Data
       {% end %}
 
       result = if new_record?
-        insert_record
-      else
-        update_record if changed?
-      end
+                 insert_record
+               else
+                 update_record if changed?
+               end
 
       result
     end
@@ -872,10 +891,10 @@ module Takarik::Data
       {% end %}
 
       result = if new_record?
-        insert_record
-      else
-        update_record if changed?
-      end
+                 insert_record
+               else
+                 update_record if changed?
+               end
 
       result || raise "Failed to save record"
     end
@@ -996,13 +1015,14 @@ module Takarik::Data
       result = self.class.connection.exec(query, args: @attributes.values.to_a)
 
       if result.rows_affected > 0
-        # Get the inserted ID if it's an auto-increment primary key
-        if self.class.primary_key == "id" && !@attributes.has_key?("id")
+        # Get the inserted ID if it's an auto-increment primary key and not already set
+        primary_key_name = self.class.primary_key
+        if !@attributes.has_key?(primary_key_name)
           id_value = result.last_insert_id
-          @attributes["id"] = id_value.as(DB::Any)
+          @attributes[primary_key_name] = id_value.as(DB::Any)
           # Also set the instance variable directly without going through set_attribute
           # to avoid adding it to changed_attributes
-          set_single_instance_variable("id", id_value.as(DB::Any))
+          set_single_instance_variable(primary_key_name, id_value.as(DB::Any))
         end
         @persisted = true
         @changed_attributes.clear

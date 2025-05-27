@@ -3,9 +3,9 @@ require "./spec_helper"
 # Test models for callback functionality
 class CallbackTestUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   # Method-based callbacks
   before_save :log_before_save_method
@@ -50,9 +50,9 @@ end
 
 class MultiCallbackUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   # Multiple before_save callbacks
   before_save :first_method
@@ -75,9 +75,9 @@ end
 
 class AllCallbacksUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   before_validation :log_before_validation
   after_validation :log_after_validation
@@ -133,9 +133,9 @@ end
 
 class ValidationCallbackUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   # Method-based validation callbacks
   before_validation :normalize_name
@@ -162,9 +162,9 @@ end
 
 class ConditionalCallbackTestUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   # Conditional callbacks with method names
   before_save :admin_callback, if: -> { is_admin? }
@@ -201,9 +201,9 @@ end
 
 class SymbolConditionUser < Takarik::Data::BaseModel
   table_name "users"
-  primary_key id, Int32
-  column name, String
-  column email, String
+  primary_key :id, Int32
+  column :name, String
+  column :email, String
 
   # Symbol-based conditional callbacks
   before_save :admin_callback, if: :is_admin?

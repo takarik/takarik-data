@@ -45,7 +45,7 @@ SQL
 class User < Takarik::Data::BaseModel
   table_name "users"
 
-  primary_key id, Int32
+  primary_key :id, Int32
   column name, String
   column email, String
   column age, Int32
@@ -80,16 +80,16 @@ end
 class Post < Takarik::Data::BaseModel
   table_name "posts"
 
-  primary_key id, Int32
-  column title, String
-  column content, String
-  column user_id, Int32
-  column published, Bool
-  column created_at, Time
-  column updated_at, Time
+  primary_key :id, Int32
+  column :title, String
+  column :content, String
+  column :user_id, Int32
+  column :published, Bool
+  column :created_at, Time
+  column :updated_at, Time
 
-  belongs_to user
-  has_many comments, dependent: :destroy
+  belongs_to :user
+  has_many :comments, dependent: :destroy
 
   validates_presence_of :title, :content, :user_id
   validates_length_of :title, minimum: 5, maximum: 100
@@ -108,15 +108,15 @@ end
 class Comment < Takarik::Data::BaseModel
   table_name "comments"
 
-  primary_key id, Int32
-  column content, String
-  column post_id, Int32
-  column user_id, Int32
-  column created_at, Time
-  column updated_at, Time
+  primary_key :id, Int32
+  column :content, String
+  column :post_id, Int32
+  column :user_id, Int32
+  column :created_at, Time
+  column :updated_at, Time
 
-  belongs_to post
-  belongs_to user
+  belongs_to :post
+  belongs_to :user
 
   validates_presence_of :content, :post_id, :user_id
   validates_length_of :content, minimum: 1, maximum: 500
