@@ -370,162 +370,342 @@ module Takarik::Data
     # Callbacks support - refactored to support multiple callbacks
     # Simple approach: use incremental counters for each callback type
 
-    # Callback registration macros - support both blocks and method names
-    macro before_save(method_name = nil, &block)
+    # Callback registration macros - support both blocks and method names with conditional options
+    macro before_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_save_callback_") }.size
       %}
 
       {% if method_name %}
         def before_save_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_save_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_save(method_name = nil, &block)
+    macro after_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_save_callback_") }.size
       %}
 
       {% if method_name %}
         def after_save_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_save_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro before_create(method_name = nil, &block)
+    macro before_create(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_create_callback_") }.size
       %}
 
       {% if method_name %}
         def before_create_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_create_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_create(method_name = nil, &block)
+    macro after_create(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_create_callback_") }.size
       %}
 
       {% if method_name %}
         def after_create_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_create_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro before_update(method_name = nil, &block)
+    macro before_update(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_update_callback_") }.size
       %}
 
       {% if method_name %}
         def before_update_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_update_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_update(method_name = nil, &block)
+    macro after_update(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_update_callback_") }.size
       %}
 
       {% if method_name %}
         def after_update_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_update_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro before_destroy(method_name = nil, &block)
+    macro before_destroy(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_destroy_callback_") }.size
       %}
 
       {% if method_name %}
         def before_destroy_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_destroy_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_destroy(method_name = nil, &block)
+    macro after_destroy(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_destroy_callback_") }.size
       %}
 
       {% if method_name %}
         def after_destroy_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_destroy_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro before_validation(method_name = nil, &block)
+    macro before_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_validation_callback_") }.size
       %}
 
       {% if method_name %}
         def before_validation_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_validation_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_validation(method_name = nil, &block)
+    macro after_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
       {%
         callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_validation_callback_") }.size
       %}
 
       {% if method_name %}
         def after_validation_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_validation_callback_{{callback_num}}
+          # Check conditions before executing callback
+          {% if condition_if %}
+            condition_result = ({{condition_if}}).call
+            return unless condition_result
+          {% end %}
+          {% if condition_unless %}
+            condition_result = ({{condition_unless}}).call
+            return if condition_result
+          {% end %}
           {{block.body}}
         end
       {% end %}
