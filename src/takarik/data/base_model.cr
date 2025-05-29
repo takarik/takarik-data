@@ -45,6 +45,7 @@ module Takarik::Data
     @attributes = {} of String => DB::Any
     @persisted = false
     @changed_attributes = Set(String).new
+    @_last_action : Symbol?
 
     # ========================================
     # CLASS METHODS - CONFIGURATION
@@ -271,6 +272,10 @@ module Takarik::Data
       @attributes = {} of String => DB::Any
       @persisted = false
       @changed_attributes = Set(String).new
+      @_last_action = nil
+
+      # Run after_initialize callbacks automatically for new instances
+      run_after_initialize_callbacks
     end
 
     # ========================================
@@ -316,7 +321,22 @@ module Takarik::Data
     # ========================================
     # INSTANCE METHODS - PERSISTENCE
     # ========================================
-
+    #
+    # These methods implement real database transactions with proper callback execution:
+    #
+    # Execution order:
+    # 1. before_* callbacks (outside transaction)
+    # 2. START TRANSACTION
+    # 3. Database operation (INSERT/UPDATE/DELETE)
+    # 4. after_create/after_update/after_destroy callbacks (inside transaction)
+    # 5. after_save callbacks (inside transaction, for create/update only)
+    # 6. COMMIT TRANSACTION (automatic if no exceptions)
+    # 7. after_commit callbacks (after successful commit)
+    #
+    # On failure or exception:
+    # - ROLLBACK TRANSACTION (automatic on exception, explicit on failed operation)
+    # - after_rollback callbacks (after rollback)
+    #
     def save
       # Run before_validation callbacks
       run_before_validation_callbacks
@@ -382,6 +402,47 @@ module Takarik::Data
       update(attributes.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
     end
 
+    def touch(*attributes)
+      return false if new_record?
+
+      current_time = Time.utc
+
+      # If no specific attributes provided, touch updated_at by default
+      if attributes.empty?
+        # Try to set updated_at if it exists
+        begin
+          self.updated_at = current_time
+        rescue
+          # Ignore if updated_at doesn't exist
+        end
+      else
+        # Touch specified attributes
+        attributes.each do |attr|
+          attr_name = attr.to_s
+          set_attribute(attr_name, current_time.as(DB::Any))
+        end
+
+        # Always update updated_at if it exists and wasn't already specified
+        unless attributes.any? { |attr| attr.to_s == "updated_at" }
+          begin
+            self.updated_at = current_time
+          rescue
+            # Ignore if updated_at doesn't exist
+          end
+        end
+      end
+
+      # Save without validation (like ActiveRecord touch)
+      result = update_record if changed?
+
+      # Run after_touch callbacks if the update was successful
+      if result
+        run_after_touch_callbacks
+      end
+
+      result
+    end
+
     def destroy
       return false if new_record?
 
@@ -391,16 +452,40 @@ module Takarik::Data
       query = "DELETE FROM \"#{self.class.table_name}\" WHERE \"#{self.class.primary_key}\" = ?"
       id_value = get_attribute(self.class.primary_key)
 
-      result = self.class.connection.exec(query, id_value)
-      success = result.rows_affected > 0
+      begin
+        self.class.connection.transaction do |tx|
+          result = tx.connection.exec(query, id_value)
 
-      if success
-        @persisted = false
-        # Run after_destroy callbacks
-        run_after_destroy_callbacks
+          if result.rows_affected > 0
+            @persisted = false
+
+            # Set the action for callbacks
+            @_last_action = :destroy
+
+            # Run after_destroy callbacks (inside transaction)
+            run_after_destroy_callbacks
+
+            # Transaction will commit automatically here
+          else
+            # Explicitly rollback the transaction
+            tx.rollback
+            @_last_action = :destroy
+            run_after_rollback_callbacks
+            return false
+          end
+        end
+
+        # Transaction committed successfully - run after_commit callbacks
+        @_last_action = :destroy
+        run_after_commit_callbacks
+        true
+
+      rescue ex
+        # Transaction was rolled back due to exception - run after_rollback callbacks
+        @_last_action = :destroy
+        run_after_rollback_callbacks
+        raise ex
       end
-
-      success
     end
 
     def reload
@@ -416,6 +501,128 @@ module Takarik::Data
         self
       else
         raise "Record no longer exists"
+      end
+    end
+
+    # ========================================
+    # PRIVATE METHODS - PERSISTENCE
+    # ========================================
+
+    private def insert_record
+      # Run before_save callbacks first
+      run_before_save_callbacks
+
+      # Run before_create callbacks
+      run_before_create_callbacks
+
+      columns = @attributes.keys
+      return false if columns.empty?
+
+      quoted_columns = columns.map { |col| "\"#{col}\"" }
+      placeholders = (["?"] * columns.size).join(", ")
+      query = "INSERT INTO \"#{self.class.table_name}\" (#{quoted_columns.join(", ")}) VALUES (#{placeholders})"
+
+      begin
+        self.class.connection.transaction do |tx|
+          result = tx.connection.exec(query, args: @attributes.values.to_a)
+
+          if result.rows_affected > 0
+            # Get the inserted ID if it's an auto-increment primary key and not already set
+            primary_key_name = self.class.primary_key
+            unless @attributes.has_key?(primary_key_name)
+              id_value = result.last_insert_id
+              @attributes[primary_key_name] = id_value.as(DB::Any)
+              # Also set the instance variable directly without going through set_attribute
+              # to avoid adding it to changed_attributes
+              set_single_instance_variable(primary_key_name, id_value.as(DB::Any))
+            end
+            @persisted = true
+            @changed_attributes.clear
+
+            # Set the action for callbacks
+            @_last_action = :create
+
+            # Run after_create callbacks (inside transaction)
+            run_after_create_callbacks
+
+            # Run after_save callbacks (inside transaction)
+            run_after_save_callbacks
+
+            # Transaction will commit automatically here
+          else
+            # Explicitly rollback the transaction
+            tx.rollback
+            @_last_action = :create
+            run_after_rollback_callbacks
+            return false
+          end
+        end
+
+        # Transaction committed successfully - run after_commit callbacks
+        @_last_action = :create
+        run_after_commit_callbacks
+        true
+
+      rescue ex
+        # Transaction was rolled back due to exception - run after_rollback callbacks
+        @_last_action = :create
+        run_after_rollback_callbacks
+        raise ex
+      end
+    end
+
+    private def update_record
+      return false if @changed_attributes.empty?
+
+      # Run before_save callbacks first
+      run_before_save_callbacks
+
+      # Run before_update callbacks
+      run_before_update_callbacks
+
+      set_clause = @changed_attributes.map { |attr| "\"#{attr}\" = ?" }.join(", ")
+      query = "UPDATE \"#{self.class.table_name}\" SET #{set_clause} WHERE \"#{self.class.primary_key}\" = ?"
+
+      changed_values = @changed_attributes.map { |attr| @attributes[attr] }.to_a
+      id_value = get_attribute(self.class.primary_key)
+      args = changed_values + [id_value]
+
+      begin
+        self.class.connection.transaction do |tx|
+          result = tx.connection.exec(query, args: args)
+
+          if result.rows_affected > 0
+            @changed_attributes.clear
+
+            # Set the action for callbacks
+            @_last_action = :update
+
+            # Run after_update callbacks (inside transaction)
+            run_after_update_callbacks
+
+            # Run after_save callbacks (inside transaction)
+            run_after_save_callbacks
+
+            # Transaction will commit automatically here
+          else
+            # Explicitly rollback the transaction
+            tx.rollback
+            @_last_action = :update
+            run_after_rollback_callbacks
+            return false
+          end
+        end
+
+        # Transaction committed successfully - run after_commit callbacks
+        @_last_action = :update
+        run_after_commit_callbacks
+        true
+
+      rescue ex
+        # Transaction was rolled back due to exception - run after_rollback callbacks
+        @_last_action = :update
+        run_after_rollback_callbacks
+        raise ex
       end
     end
 
@@ -445,6 +652,9 @@ module Takarik::Data
       sync_instance_variables_from_attributes
       @persisted = true
       @changed_attributes.clear
+
+      # Run after_find callbacks since we loaded from database
+      run_after_find_callbacks
     end
 
     protected def load_from_prefixed_result_set(rs : DB::ResultSet)
@@ -464,6 +674,9 @@ module Takarik::Data
       sync_instance_variables_from_attributes
       @persisted = true
       @changed_attributes.clear
+
+      # Run after_find callbacks since we loaded from database
+      run_after_find_callbacks
     end
 
     # ========================================
@@ -480,170 +693,126 @@ module Takarik::Data
       end
     end
 
-    private def insert_record
-      # Run before_save callbacks first
-      run_before_save_callbacks
-
-      # Run before_create callbacks
-      run_before_create_callbacks
-
-      columns = @attributes.keys
-      return false if columns.empty?
-
-      quoted_columns = columns.map { |col| "\"#{col}\"" }
-      placeholders = (["?"] * columns.size).join(", ")
-      query = "INSERT INTO \"#{self.class.table_name}\" (#{quoted_columns.join(", ")}) VALUES (#{placeholders})"
-
-      result = self.class.connection.exec(query, args: @attributes.values.to_a)
-
-      if result.rows_affected > 0
-        # Get the inserted ID if it's an auto-increment primary key and not already set
-        primary_key_name = self.class.primary_key
-        unless @attributes.has_key?(primary_key_name)
-          id_value = result.last_insert_id
-          @attributes[primary_key_name] = id_value.as(DB::Any)
-          # Also set the instance variable directly without going through set_attribute
-          # to avoid adding it to changed_attributes
-          set_single_instance_variable(primary_key_name, id_value.as(DB::Any))
-        end
-        @persisted = true
-        @changed_attributes.clear
-
-        # Run after_create callbacks
-        run_after_create_callbacks
-
-        # Run after_save callbacks
-        run_after_save_callbacks
-
-        true
-      else
-        false
-      end
-    end
-
-    private def update_record
-      return false if @changed_attributes.empty?
-
-      # Run before_save callbacks first
-      run_before_save_callbacks
-
-      # Run before_update callbacks
-      run_before_update_callbacks
-
-      set_clause = @changed_attributes.map { |attr| "\"#{attr}\" = ?" }.join(", ")
-      query = "UPDATE \"#{self.class.table_name}\" SET #{set_clause} WHERE \"#{self.class.primary_key}\" = ?"
-
-      changed_values = @changed_attributes.map { |attr| @attributes[attr] }.to_a
-      id_value = get_attribute(self.class.primary_key)
-      args = changed_values + [id_value]
-
-      result = self.class.connection.exec(query, args: args)
-
-      if result.rows_affected > 0
-        @changed_attributes.clear
-
-        # Run after_update callbacks
-        run_after_update_callbacks
-
-        # Run after_save callbacks
-        run_after_save_callbacks
-
-        true
-      else
-        false
-      end
-    end
-
     # ========================================
     # PRIVATE METHODS - CALLBACKS
     # ========================================
 
     private def run_before_save_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "before_save_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_save_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_after_save_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "after_save_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_save_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_before_create_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "before_create_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_create_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_after_create_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "after_create_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_create_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_before_update_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "before_update_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_update_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_after_update_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "after_update_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_update_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_before_destroy_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "before_destroy_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_destroy_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_after_destroy_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "after_destroy_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_destroy_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_before_validation_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "before_validation_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("before_validation_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
 
     private def run_after_validation_callbacks
-      {% for i in 0..99 %}
-        {% method_name = "after_validation_callback_#{i}".id %}
-        {% if @type.has_method?(method_name) %}
-          {{method_name}}
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_validation_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_commit_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_commit_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_rollback_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_rollback_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_initialize_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_initialize_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_find_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_find_callback_") %}
+          {{method.name.id}}
+        {% end %}
+      {% end %}
+    end
+
+    private def run_after_touch_callbacks
+      {% for method in @type.methods %}
+        {% if method.name.stringify.starts_with?("after_touch_callback_") %}
+          {{method.name.id}}
         {% end %}
       {% end %}
     end
@@ -717,8 +886,17 @@ module Takarik::Data
     # MACROS - CALLBACKS
     # ========================================
 
-    macro check_callback_conditions(condition_if, condition_unless)
-      {% if condition_if || condition_unless %}
+    macro check_callback_conditions(condition_if, condition_unless, on_condition = nil, current_action = nil)
+      {% if condition_if || condition_unless || on_condition %}
+        # Check on conditions first
+        {% if on_condition && current_action %}
+          {% if on_condition.is_a?(ArrayLiteral) %}
+            return unless {{on_condition}}.includes?({{current_action}})
+          {% else %}
+            return unless {{on_condition}} == {{current_action}}
+          {% end %}
+        {% end %}
+
         # Check if conditions
         {% if condition_if %}
           {% if condition_if.is_a?(SymbolLiteral) %}
@@ -741,33 +919,53 @@ module Takarik::Data
       {% end %}
     end
 
-    macro before_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+    macro before_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
       {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_save_callback_") }.size %}
 
       {% if method_name %}
         def before_save_callback_{{callback_num}}
-          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_save_callback_{{callback_num}}
-          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+    macro after_save(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
       {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_save_callback_") }.size %}
 
       {% if method_name %}
         def after_save_callback_{{callback_num}}
-          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% if on_condition %}
+            current_action = @_last_action || (new_record? ? :create : :update)
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def after_save_callback_{{callback_num}}
-          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% if on_condition %}
+            current_action = @_last_action || (new_record? ? :create : :update)
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
           {{block.body}}
         end
       {% end %}
@@ -869,32 +1067,158 @@ module Takarik::Data
       {% end %}
     end
 
-    macro before_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+    macro before_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
       {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("before_validation_callback_") }.size %}
 
       {% if method_name %}
         def before_validation_callback_{{callback_num}}
-          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
           {{method_name.id}}
         end
       {% else %}
         def before_validation_callback_{{callback_num}}
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    macro after_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_validation_callback_") }.size %}
+
+      {% if method_name %}
+        def after_validation_callback_{{callback_num}}
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_validation_callback_{{callback_num}}
+          {% if on_condition %}
+            current_action = new_record? ? :create : :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    # Generic commit callbacks (ActiveRecord pattern)
+    macro after_commit(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_commit_callback_") }.size %}
+
+      {% if method_name %}
+        def after_commit_callback_{{callback_num}}
+          {% if on_condition %}
+            # For after_commit, we need to track what action was performed
+            current_action = @_last_action || :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_commit_callback_{{callback_num}}
+          {% if on_condition %}
+            # For after_commit, we need to track what action was performed
+            current_action = @_last_action || :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    macro after_rollback(method_name = nil, if condition_if = nil, unless condition_unless = nil, on on_condition = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_rollback_callback_") }.size %}
+
+      {% if method_name %}
+        def after_rollback_callback_{{callback_num}}
+          {% if on_condition %}
+            # For after_rollback, we need to track what action was being performed
+            current_action = @_last_action || :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_rollback_callback_{{callback_num}}
+          {% if on_condition %}
+            # For after_rollback, we need to track what action was being performed
+            current_action = @_last_action || :update
+            check_callback_conditions({{condition_if}}, {{condition_unless}}, {{on_condition}}, current_action)
+          {% else %}
+            check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {% end %}
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    # Object lifecycle callbacks (ActiveRecord pattern)
+    macro after_initialize(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_initialize_callback_") }.size %}
+
+      {% if method_name %}
+        def after_initialize_callback_{{callback_num}}
+          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_initialize_callback_{{callback_num}}
           check_callback_conditions({{condition_if}}, {{condition_unless}})
           {{block.body}}
         end
       {% end %}
     end
 
-    macro after_validation(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
-      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_validation_callback_") }.size %}
+    macro after_find(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_find_callback_") }.size %}
 
       {% if method_name %}
-        def after_validation_callback_{{callback_num}}
+        def after_find_callback_{{callback_num}}
           check_callback_conditions({{condition_if}}, {{condition_unless}})
           {{method_name.id}}
         end
       {% else %}
-        def after_validation_callback_{{callback_num}}
+        def after_find_callback_{{callback_num}}
+          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {{block.body}}
+        end
+      {% end %}
+    end
+
+    macro after_touch(method_name = nil, if condition_if = nil, unless condition_unless = nil, &block)
+      {% callback_num = @type.methods.select { |m| m.name.stringify.starts_with?("after_touch_callback_") }.size %}
+
+      {% if method_name %}
+        def after_touch_callback_{{callback_num}}
+          check_callback_conditions({{condition_if}}, {{condition_unless}})
+          {{method_name.id}}
+        end
+      {% else %}
+        def after_touch_callback_{{callback_num}}
           check_callback_conditions({{condition_if}}, {{condition_unless}})
           {{block.body}}
         end
@@ -1016,7 +1340,8 @@ module Takarik::Data
       {% begin %}
         case column_name
         {% for ivar in @type.instance_vars %}
-          {% if ivar.name.stringify != "attributes" && ivar.name.stringify != "persisted" && ivar.name.stringify != "changed_attributes" && ivar.name.stringify != "validation_errors" %}
+          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action"] %}
+          {% unless excluded_vars.includes?(ivar.name.stringify) %}
             when {{ivar.name.stringify}}
               # Extract the type from the instance variable type and do direct assignment
               {% if ivar.type.stringify.includes?("Int32") %}
