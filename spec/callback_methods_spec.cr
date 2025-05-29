@@ -1028,3 +1028,262 @@ describe "After Touch Callbacks" do
     email.should contain("regular_touch;")
   end
 end
+
+# Test model for enhanced callback conditions
+class EnhancedCallbackUser < Takarik::Data::BaseModel
+  table_name "users"
+  column :name, String
+  column :email, String
+
+  # Single conditions (already supported)
+  before_save :single_symbol_callback, if: :is_admin?
+  before_save :single_proc_callback, if: -> { name.try(&.includes?("Test")) || false }
+
+  # Array of symbol conditions (all must be true)
+  before_save :array_symbols_callback, if: [:is_admin?, :has_email?]
+
+  # Mixed array with symbols and procs
+  before_save :mixed_array_callback, if: [:is_admin?, -> { name.try(&.includes?("Mixed")) || false }]
+
+  # Proc with parameter
+  before_save :proc_with_param_callback, if: ->(user : EnhancedCallbackUser) { user.name.try(&.includes?("Param")) || false }
+
+  # Combined if and unless
+  before_save :combined_if_unless_callback,
+    if: -> { name.try(&.includes?("Combined")) || false },
+    unless: :is_blocked?
+
+  # Array of unless conditions
+  before_save :array_unless_callback,
+    unless: [:is_blocked?, -> { name.try(&.includes?("Skip")) || false }]
+
+  def is_admin?
+    name.try(&.downcase.includes?("admin")) || false
+  end
+
+  def has_email?
+    email.try { |e| !e.empty? } || false
+  end
+
+  def is_blocked?
+    name.try(&.includes?("Blocked")) || false
+  end
+
+  private def single_symbol_callback
+    self.email = (self.email || "") + "single_symbol;"
+  end
+
+  private def single_proc_callback
+    self.email = (self.email || "") + "single_proc;"
+  end
+
+  private def array_symbols_callback
+    self.email = (self.email || "") + "array_symbols;"
+  end
+
+  private def mixed_array_callback
+    self.email = (self.email || "") + "mixed_array;"
+  end
+
+  private def proc_with_param_callback
+    self.email = (self.email || "") + "proc_with_param;"
+  end
+
+  private def combined_if_unless_callback
+    self.email = (self.email || "") + "combined_if_unless;"
+  end
+
+  private def array_unless_callback
+    self.email = (self.email || "") + "array_unless;"
+  end
+end
+
+describe "Enhanced Callback Conditions" do
+  describe "array of symbol conditions" do
+    it "executes callback when all symbol conditions are true" do
+      user = EnhancedCallbackUser.new
+      user.name = "Admin User"
+      user.email = "admin@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should contain("array_symbols;")
+    end
+
+    it "does not execute callback when any symbol condition is false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Regular User"  # Not admin, so won't trigger single_symbol_callback
+      user.email = ""  # has_email? returns false
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("array_symbols;")
+    end
+  end
+
+  describe "mixed array with symbols and procs" do
+    it "executes callback when all mixed conditions are true" do
+      user = EnhancedCallbackUser.new
+      user.name = "Admin Mixed User"
+      user.email = "mixed@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should contain("mixed_array;")
+    end
+
+    it "does not execute callback when proc condition is false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Admin User"  # doesn't include "Mixed"
+      user.email = "admin@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("mixed_array;")
+    end
+  end
+
+  describe "proc with parameter" do
+    it "executes callback when proc with parameter is true" do
+      user = EnhancedCallbackUser.new
+      user.name = "Param User"
+      user.email = "param@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should contain("proc_with_param;")
+    end
+
+    it "does not execute callback when proc with parameter is false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Regular User"  # doesn't include "Param"
+      user.email = "regular@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("proc_with_param;")
+    end
+  end
+
+  describe "combined if and unless conditions" do
+    it "executes callback when if is true and unless is false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Combined User"  # includes "Combined", doesn't include "Blocked"
+      user.email = "combined@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should contain("combined_if_unless;")
+    end
+
+    it "does not execute callback when if is true but unless is also true" do
+      user = EnhancedCallbackUser.new
+      user.name = "Combined Blocked User"  # includes both "Combined" and "Blocked"
+      user.email = "blocked@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("combined_if_unless;")
+    end
+
+    it "does not execute callback when if is false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Regular User"  # doesn't include "Combined"
+      user.email = "regular@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("combined_if_unless;")
+    end
+  end
+
+  describe "array of unless conditions" do
+    it "executes callback when all unless conditions are false" do
+      user = EnhancedCallbackUser.new
+      user.name = "Regular User"  # doesn't include "Blocked" or "Skip"
+      user.email = "regular@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should contain("array_unless;")
+    end
+
+    it "does not execute callback when any unless condition is true" do
+      user = EnhancedCallbackUser.new
+      user.name = "Blocked User"  # includes "Blocked"
+      user.email = "blocked@example.com"
+      user.save
+
+      email = user.email || ""
+      email.should_not contain("array_unless;")
+
+      user2 = EnhancedCallbackUser.new
+      user2.name = "Skip User"  # includes "Skip"
+      user2.email = "skip@example.com"
+      user2.save
+
+      email2 = user2.email || ""
+      email2.should_not contain("array_unless;")
+    end
+  end
+
+  describe "backward compatibility" do
+    it "still supports existing single symbol and proc conditions" do
+      user = EnhancedCallbackUser.new
+      user.name = "Admin Test User"
+      user.email = "test@example.com"
+      user.save
+
+      email = user.email || ""
+      # Should execute both single symbol and single proc callbacks
+      email.should contain("single_symbol;")
+      email.should contain("single_proc;")
+    end
+  end
+end
+
+# Test model for proc parameter edge cases
+class EdgeCaseCallbackUser < Takarik::Data::BaseModel
+  table_name "users"
+  column :name, String
+  column :email, String
+
+  # Various proc parameter styles
+  before_save :no_param_proc, if: -> { name.try(&.includes?("NoParam")) || false }
+  before_save :typed_param_proc, if: ->(user : EdgeCaseCallbackUser) { user.name.try(&.includes?("TypedParam")) || false }
+  before_save :untyped_param_proc, if: ->(user : EdgeCaseCallbackUser) { user.name.try(&.includes?("UntypedParam")) || false }
+
+  private def no_param_proc
+    self.email = (self.email || "") + "no_param;"
+  end
+
+  private def typed_param_proc
+    self.email = (self.email || "") + "typed_param;"
+  end
+
+  private def untyped_param_proc
+    self.email = (self.email || "") + "untyped_param;"
+  end
+end
+
+describe "Proc Parameter Edge Cases" do
+  it "handles proc without parameters" do
+    user = EdgeCaseCallbackUser.new
+    user.name = "NoParam User"
+    user.email = ""
+    user.save
+
+    email = user.email || ""
+    email.should contain("no_param;")
+  end
+
+  it "handles proc with typed parameter" do
+    user = EdgeCaseCallbackUser.new
+    user.name = "TypedParam User"
+    user.email = ""
+    user.save
+
+    email = user.email || ""
+    email.should contain("typed_param;")
+  end
+end

@@ -897,23 +897,75 @@ module Takarik::Data
           {% end %}
         {% end %}
 
-        # Check if conditions
+        # Check if conditions (all must be true)
         {% if condition_if %}
-          {% if condition_if.is_a?(SymbolLiteral) %}
+          {% if condition_if.is_a?(ArrayLiteral) %}
+            # Handle array of conditions - all must be true
+            {% for condition in condition_if %}
+              {% if condition.is_a?(SymbolLiteral) %}
+                return unless {{condition.id}}
+              {% elsif condition.is_a?(ProcLiteral) %}
+                condition_proc = {{condition}}
+                {% if condition.args.size > 0 %}
+                  # Proc with parameter(s)
+                  return unless condition_proc.call(self)
+                {% else %}
+                  # Proc without parameters
+                  return unless condition_proc.call
+                {% end %}
+              {% else %}
+                {% raise "Unsupported callback condition type: #{condition.class_name}. Use Symbol or Proc." %}
+              {% end %}
+            {% end %}
+          {% elsif condition_if.is_a?(SymbolLiteral) %}
             return unless {{condition_if.id}}
-          {% else %}
+          {% elsif condition_if.is_a?(ProcLiteral) %}
             condition_proc = {{condition_if}}
-            return unless condition_proc.call
+            {% if condition_if.args.size > 0 %}
+              # Proc with parameter(s)
+              return unless condition_proc.call(self)
+            {% else %}
+              # Proc without parameters
+              return unless condition_proc.call
+            {% end %}
+          {% else %}
+            {% raise "Unsupported callback condition type: #{condition_if.class_name}. Use Symbol or Proc." %}
           {% end %}
         {% end %}
 
-        # Check unless conditions
+        # Check unless conditions (all must be false)
         {% if condition_unless %}
-          {% if condition_unless.is_a?(SymbolLiteral) %}
+          {% if condition_unless.is_a?(ArrayLiteral) %}
+            # Handle array of conditions - all must be false
+            {% for condition in condition_unless %}
+              {% if condition.is_a?(SymbolLiteral) %}
+                return if {{condition.id}}
+              {% elsif condition.is_a?(ProcLiteral) %}
+                condition_proc = {{condition}}
+                {% if condition.args.size > 0 %}
+                  # Proc with parameter(s)
+                  return if condition_proc.call(self)
+                {% else %}
+                  # Proc without parameters
+                  return if condition_proc.call
+                {% end %}
+              {% else %}
+                {% raise "Unsupported callback condition type: #{condition.class_name}. Use Symbol or Proc." %}
+              {% end %}
+            {% end %}
+          {% elsif condition_unless.is_a?(SymbolLiteral) %}
             return if {{condition_unless.id}}
-          {% else %}
+          {% elsif condition_unless.is_a?(ProcLiteral) %}
             condition_proc = {{condition_unless}}
-            return if condition_proc.call
+            {% if condition_unless.args.size > 0 %}
+              # Proc with parameter(s)
+              return if condition_proc.call(self)
+            {% else %}
+              # Proc without parameters
+              return if condition_proc.call
+            {% end %}
+          {% else %}
+            {% raise "Unsupported callback condition type: #{condition_unless.class_name}. Use Symbol or Proc." %}
           {% end %}
         {% end %}
       {% end %}
