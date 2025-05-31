@@ -205,7 +205,7 @@ module Takarik::Data
     end
 
     def self.find(id)
-      query = "SELECT * FROM \"#{table_name}\" WHERE \"#{primary_key}\" = ?"
+      query = "SELECT * FROM #{table_name} WHERE #{primary_key} = ?"
 
       connection.query_one?(query, id) do |rs|
         instance = new
@@ -219,7 +219,7 @@ module Takarik::Data
     end
 
     def self.first
-      query = "SELECT * FROM \"#{table_name}\" LIMIT 1"
+      query = "SELECT * FROM #{table_name} LIMIT 1"
 
       connection.query_one?(query) do |rs|
         instance = new
@@ -233,7 +233,7 @@ module Takarik::Data
     end
 
     def self.last
-      query = "SELECT * FROM \"#{table_name}\" ORDER BY \"#{primary_key}\" DESC LIMIT 1"
+      query = "SELECT * FROM #{table_name} ORDER BY #{primary_key} DESC LIMIT 1"
 
       connection.query_one?(query) do |rs|
         instance = new
@@ -243,7 +243,7 @@ module Takarik::Data
     end
 
     def self.count
-      query = "SELECT COUNT(*) FROM \"#{table_name}\""
+      query = "SELECT COUNT(*) FROM #{table_name}"
       connection.scalar(query).as(Int64)
     end
 
@@ -449,7 +449,7 @@ module Takarik::Data
       # Run before_destroy callbacks
       run_before_destroy_callbacks
 
-      query = "DELETE FROM \"#{self.class.table_name}\" WHERE \"#{self.class.primary_key}\" = ?"
+      query = "DELETE FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ?"
       id_value = get_attribute(self.class.primary_key)
 
       begin
@@ -470,20 +470,20 @@ module Takarik::Data
             # Explicitly rollback the transaction
             tx.rollback
             @_last_action = :destroy
-            run_after_rollback_callbacks
+            execute_rollback_callbacks(:destroy)
             return false
           end
         end
 
         # Transaction committed successfully - run after_commit callbacks
         @_last_action = :destroy
-        run_after_commit_callbacks
+        execute_commit_callbacks(:destroy)
         true
 
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :destroy
-        run_after_rollback_callbacks
+        execute_rollback_callbacks(:destroy)
         raise ex
       end
     end
@@ -518,9 +518,8 @@ module Takarik::Data
       columns = @attributes.keys
       return false if columns.empty?
 
-      quoted_columns = columns.map { |col| "\"#{col}\"" }
       placeholders = (["?"] * columns.size).join(", ")
-      query = "INSERT INTO \"#{self.class.table_name}\" (#{quoted_columns.join(", ")}) VALUES (#{placeholders})"
+      query = "INSERT INTO #{self.class.table_name} (#{columns.join(", ")}) VALUES (#{placeholders})"
 
       begin
         self.class.connection.transaction do |tx|
@@ -553,20 +552,20 @@ module Takarik::Data
             # Explicitly rollback the transaction
             tx.rollback
             @_last_action = :create
-            run_after_rollback_callbacks
+            execute_rollback_callbacks(:create)
             return false
           end
         end
 
         # Transaction committed successfully - run after_commit callbacks
         @_last_action = :create
-        run_after_commit_callbacks
+        execute_commit_callbacks(:create)
         true
 
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :create
-        run_after_rollback_callbacks
+        execute_rollback_callbacks(:create)
         raise ex
       end
     end
@@ -580,8 +579,8 @@ module Takarik::Data
       # Run before_update callbacks
       run_before_update_callbacks
 
-      set_clause = @changed_attributes.map { |attr| "\"#{attr}\" = ?" }.join(", ")
-      query = "UPDATE \"#{self.class.table_name}\" SET #{set_clause} WHERE \"#{self.class.primary_key}\" = ?"
+      set_clause = @changed_attributes.map { |attr| "#{attr} = ?" }.join(", ")
+      query = "UPDATE #{self.class.table_name} SET #{set_clause} WHERE #{self.class.primary_key} = ?"
 
       changed_values = @changed_attributes.map { |attr| @attributes[attr] }.to_a
       id_value = get_attribute(self.class.primary_key)
@@ -608,20 +607,20 @@ module Takarik::Data
             # Explicitly rollback the transaction
             tx.rollback
             @_last_action = :update
-            run_after_rollback_callbacks
+            execute_rollback_callbacks(:update)
             return false
           end
         end
 
         # Transaction committed successfully - run after_commit callbacks
         @_last_action = :update
-        run_after_commit_callbacks
+        execute_commit_callbacks(:update)
         true
 
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :update
-        run_after_rollback_callbacks
+        execute_rollback_callbacks(:update)
         raise ex
       end
     end
@@ -1485,5 +1484,16 @@ module Takarik::Data
     end
 
     generate_base_model_where_overloads
+
+    # Helper methods for DRY callback execution
+    private def execute_commit_callbacks(action : Symbol)
+      @_last_action = action
+      run_after_commit_callbacks
+    end
+
+    private def execute_rollback_callbacks(action : Symbol)
+      @_last_action = action
+      run_after_rollback_callbacks
+    end
   end
 end
