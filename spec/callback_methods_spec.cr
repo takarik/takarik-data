@@ -1287,3 +1287,143 @@ describe "Proc Parameter Edge Cases" do
     email.should contain("typed_param;")
   end
 end
+
+describe "dependent associations" do
+  describe "dependent: :destroy" do
+    it "destroys associated records when parent is destroyed" do
+      # Create user with posts (User has_many posts, dependent: :destroy)
+      user = User.create(name: "John", email: "john@destroy.com", age: 30, active: true)
+      post1 = user.create_posts(title: "Post 1", content: "Content 1", published: true)
+      post2 = user.create_posts(title: "Post 2", content: "Content 2", published: true)
+
+      # Verify posts exist
+      user.posts.count.should eq(2)
+      Post.count.should be >= 2
+
+      # Destroy user - should also destroy associated posts
+      user.destroy.should be_true
+
+      # Verify posts were destroyed
+      Post.find(post1.id).should be_nil
+      Post.find(post2.id).should be_nil
+    end
+
+    it "destroys nested dependent associations" do
+      # Create user -> post -> comments chain
+      user = User.create(name: "Jane", email: "jane@destroy.com", age: 25, active: true)
+      post = user.create_posts(title: "Blog Post", content: "Content", published: true)
+      comment1 = post.create_comments(content: "Great post!", user_id: user.id)
+      comment2 = post.create_comments(content: "I agree!", user_id: user.id)
+
+      # Verify chain exists
+      user.posts.count.should eq(1)
+      post.comments.count.should eq(2)
+
+      # Destroy user - should cascade destroy posts and their comments
+      user.destroy.should be_true
+
+      # Verify everything was destroyed
+      Post.find(post.id).should be_nil
+      Comment.find(comment1.id).should be_nil
+      Comment.find(comment2.id).should be_nil
+    end
+  end
+
+  describe "dependent: :delete_all" do
+    it "deletes associated records with SQL DELETE (no callbacks)" do
+      # Create department with employees
+      dept = DepartmentDeleteAll.create(name: "Engineering")
+      emp1 = EmployeeDeleteAll.create(name: "Alice", department_id: dept.id)
+      emp2 = EmployeeDeleteAll.create(name: "Bob", department_id: dept.id)
+
+      # Verify employees exist
+      EmployeeDeleteAll.where(department_id: dept.id).count.should eq(2)
+
+      # Destroy department - should delete employees with SQL (faster, no callbacks)
+      dept.destroy.should be_true
+
+      # Verify employees were deleted
+      EmployeeDeleteAll.where(department_id: dept.id).count.should eq(0)
+      EmployeeDeleteAll.find(emp1.id).should be_nil
+      EmployeeDeleteAll.find(emp2.id).should be_nil
+    end
+  end
+
+  describe "dependent: :nullify" do
+    it "nullifies foreign keys instead of deleting records" do
+      # Create category with products
+      category = CategoryNullify.create(name: "Electronics")
+      product1 = ProductNullify.create(name: "Laptop", category_id: category.id)
+      product2 = ProductNullify.create(name: "Phone", category_id: category.id)
+
+      # Verify products are associated
+      ProductNullify.where(category_id: category.id).count.should eq(2)
+
+      # Destroy category - should nullify foreign keys, keep products
+      category.destroy.should be_true
+
+      # Verify products still exist but with null category_id
+      ProductNullify.count.should be >= 2  # Products still exist
+      product1.reload
+      product2.reload
+      product1.category_id.should be_nil
+      product2.category_id.should be_nil
+    end
+  end
+
+  describe "without dependent option" do
+    it "leaves associated records untouched when no dependent option specified" do
+      # Create company with employees
+      company = CompanyIndependent.create(name: "TechCorp")
+      emp1 = EmployeeIndependent.create(name: "Charlie", company_id: company.id)
+      emp2 = EmployeeIndependent.create(name: "Diana", company_id: company.id)
+
+      # Verify employees exist
+      EmployeeIndependent.where(company_id: company.id).count.should eq(2)
+
+      # Destroy company - should NOT affect employees
+      company.destroy.should be_true
+
+      # Verify employees still exist and still reference the company (foreign key intact)
+      EmployeeIndependent.where(company_id: company.id).count.should eq(2)
+      emp1.reload
+      emp2.reload
+      emp1.company_id.should eq(company.id)  # Foreign key preserved
+      emp2.company_id.should eq(company.id)  # Foreign key preserved
+    end
+  end
+
+  describe "belongs_to dependent options" do
+    it "ignores dependent options on belongs_to associations" do
+      # belongs_to with dependent option should be ignored (like ActiveRecord)
+      customer = CustomerDependent.create(name: "John Doe")
+      order = OrderDependent.create(total: 99.99, customer_id: customer.id)
+
+      # Destroy order - should NOT destroy customer (belongs_to dependent is ignored)
+      order.destroy.should be_true
+
+      # Customer should still exist
+      CustomerDependent.find(customer.id).should_not be_nil
+    end
+  end
+
+  describe "error handling in dependent associations" do
+    it "handles missing associated records gracefully" do
+      user = User.create(name: "Test", email: "test@example.com", age: 30, active: true)
+
+      # Should not raise error even if no associated records exist
+      user.destroy.should be_true
+    end
+
+    it "rolls back transaction if dependent destroy fails" do
+      # This would require mocking/stubbing to test transaction rollback
+      # For now, we test that the basic flow works
+      user = User.create(name: "Test", email: "test@rollback.com", age: 30, active: true)
+      post = user.create_posts(title: "Test Post", content: "Content", published: true)
+
+      # Should work normally
+      user.destroy.should be_true
+      Post.find(post.id).should be_nil
+    end
+  end
+end

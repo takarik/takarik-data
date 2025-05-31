@@ -497,8 +497,7 @@ module Takarik::Data
       end
 
       current_table = @model_class.table_name
-      clean_class_name = association.class_name.gsub("\"", "")
-      associated_table = Wordsmith::Inflector.tableize(clean_class_name)
+      associated_table = association.class_type.table_name
 
       case association.type
       when .belongs_to?

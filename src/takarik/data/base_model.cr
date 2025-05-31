@@ -451,6 +451,11 @@ module Takarik::Data
           if result.rows_affected > 0
             @persisted = false
 
+            # Call dependent associations handling after main record is destroyed but within transaction
+            {% if @type.ancestors.any? { |a| a.name.stringify.includes?("Associations") } %}
+              destroy_dependent_associations(tx.connection)
+            {% end %}
+
             # Set the action for callbacks
             @_last_action = :destroy
 
@@ -477,6 +482,38 @@ module Takarik::Data
         @_last_action = :destroy
         execute_rollback_callbacks(:destroy)
         raise ex
+      end
+    end
+
+    # Transaction-aware destroy method for use within existing transactions
+    def destroy_with_connection(connection)
+      return false if new_record?
+
+      # Run before_destroy callbacks
+      run_before_destroy_callbacks
+
+      query = "DELETE FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ?"
+      id_value = get_attribute(self.class.primary_key)
+
+      result = connection.exec(query, id_value)
+
+      if result.rows_affected > 0
+        @persisted = false
+
+        # Call dependent associations handling within the same transaction
+        {% if @type.ancestors.any? { |a| a.name.stringify.includes?("Associations") } %}
+          destroy_dependent_associations(connection)
+        {% end %}
+
+        # Set the action for callbacks
+        @_last_action = :destroy
+
+        # Run after_destroy callbacks (inside transaction)
+        run_after_destroy_callbacks
+
+        true
+      else
+        false
       end
     end
 
