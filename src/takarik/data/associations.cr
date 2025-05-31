@@ -21,9 +21,10 @@ module Takarik::Data
       getter foreign_key : String
       getter primary_key : String
       getter dependent : Symbol?
+      getter optional : Bool
 
       def initialize(@name : String, @type : AssociationType, @class_type : BaseModel.class,
-                     @foreign_key : String, @primary_key : String = "id", @dependent : Symbol? = nil)
+                     @foreign_key : String, @primary_key : String = "id", @dependent : Symbol? = nil, @optional : Bool = false)
       end
     end
 
@@ -52,9 +53,9 @@ module Takarik::Data
 
     module ClassMethods
       def add_association(name : String, type : AssociationType, class_type : BaseModel.class,
-                             foreign_key : String, primary_key : String, dependent : Symbol?)
+                             foreign_key : String, primary_key : String, dependent : Symbol?, optional : Bool)
         @@associations[self.name] ||= [] of Association
-        @@associations[self.name] << Association.new(name, type, class_type, foreign_key, primary_key, dependent)
+        @@associations[self.name] << Association.new(name, type, class_type, foreign_key, primary_key, dependent, optional)
       end
 
       def associations
@@ -216,7 +217,7 @@ module Takarik::Data
 
       # Add association metadata with actual class
       add_association({{name.id.stringify}}, AssociationType::BelongsTo, {{class_type}},
-                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}})
+                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, {{optional}})
 
       # Add validation for required associations (when optional: false)
       {% unless optional %}
@@ -311,7 +312,7 @@ module Takarik::Data
 
       # Add association metadata with actual class
       add_association({{name.id.stringify}}, AssociationType::HasMany, {{class_type}},
-                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}})
+                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false)
 
       # Define the getter method
       def {{name.id}}
@@ -393,7 +394,7 @@ module Takarik::Data
 
       # Add association metadata with actual class
       add_association({{name.id.stringify}}, AssociationType::HasOne, {{class_type}},
-                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}})
+                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false)
 
       # Define the getter method
       def {{name.id}}

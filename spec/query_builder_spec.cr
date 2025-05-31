@@ -1009,4 +1009,122 @@ describe Takarik::Data::QueryBuilder do
       performance_improvement.should be > 50.0 # At least 50% improvement
     end
   end
+
+  describe "smart joins based on association configuration" do
+    it "automatically uses INNER JOIN for required belongs_to associations" do
+      # Task belongs_to :project (required, optional: false by default)
+      query = Task.joins("project")
+      sql = query.to_sql
+
+      # Should use INNER JOIN because project is required
+      sql.should contain("INNER JOIN projects")
+      sql.should contain("ON tasks.project_id = projects.id")
+    end
+
+    it "automatically uses LEFT JOIN for optional belongs_to associations" do
+      # Task belongs_to :assignee, optional: true
+      query = Task.joins("assignee")
+      sql = query.to_sql
+
+      # Should use LEFT JOIN because assignee is optional
+      sql.should contain("LEFT JOIN users_optional")
+      sql.should contain("ON tasks.assignee_id = users_optional.id")
+    end
+
+    it "supports both string and symbol association names" do
+      # Test with string
+      string_query = Task.joins("project")
+      string_sql = string_query.to_sql
+      string_sql.should contain("INNER JOIN projects")
+
+      # Test with symbol
+      symbol_query = Task.joins(:project)
+      symbol_sql = symbol_query.to_sql
+      symbol_sql.should contain("INNER JOIN projects")
+
+      # Both should generate identical SQL
+      string_sql.should eq(symbol_sql)
+
+      # Test different join types with symbols
+      inner_symbol = Task.inner_join(:assignee)
+      inner_symbol.to_sql.should contain("INNER JOIN users_optional")
+
+      left_symbol = Task.left_join(:project)
+      left_symbol.to_sql.should contain("LEFT JOIN projects")
+
+      right_symbol = Task.right_join(:assignee)
+      right_symbol.to_sql.should contain("RIGHT JOIN users_optional")
+
+      # Test class-level methods with symbols
+      class_inner = Task.inner_join(:project)
+      class_inner.to_sql.should contain("INNER JOIN projects")
+
+      class_left = Task.left_join(:assignee)
+      class_left.to_sql.should contain("LEFT JOIN users_optional")
+
+      # Test smart joins method with symbol
+      smart_symbol = Task.joins(:assignee)
+      smart_symbol.to_sql.should contain("LEFT JOIN users_optional")
+    end
+
+    it "automatically uses LEFT JOIN for has_many associations" do
+      # Project has_many :tasks
+      query = Project.joins("tasks")
+      sql = query.to_sql
+
+      # Should use LEFT JOIN because a project might not have tasks
+      sql.should contain("LEFT JOIN tasks")
+      sql.should contain("ON projects.id = tasks.project_id")
+    end
+
+    it "explicit join methods override smart behavior" do
+      # Even though assignee is optional, explicit inner_join should work
+      inner_query = Task.inner_join("assignee")
+      inner_sql = inner_query.to_sql
+      inner_sql.should contain("INNER JOIN users_optional")
+
+      # Even though project is required, explicit left_join should work
+      left_query = Task.left_join("project")
+      left_sql = left_query.to_sql
+      left_sql.should contain("LEFT JOIN projects")
+    end
+
+    it "demonstrates practical benefits of smart joins" do
+      # Create test data
+      project = Project.create(name: "Test Project")
+      user = UserOptional.create(name: "Test User")
+
+      # Task with both required and optional associations
+      task_with_assignee = Task.new
+      task_with_assignee.title = "Assigned Task"
+      task_with_assignee.project = project
+      task_with_assignee.assignee = user
+      task_with_assignee.save.should be_true
+
+      task_without_assignee = Task.new
+      task_without_assignee.title = "Unassigned Task"
+      task_without_assignee.project = project
+      task_without_assignee.save.should be_true
+
+      # Smart join on required association (project) - uses INNER JOIN
+      # Should only return tasks that have projects (both tasks)
+      tasks_with_projects = Task.joins("project").to_a
+      tasks_with_projects.size.should eq(2)
+
+      # Smart join on optional association (assignee) - uses LEFT JOIN
+      # Should return all tasks, even those without assignees
+      all_tasks_query = Task.joins("assignee")
+      all_tasks_sql = all_tasks_query.to_sql
+      all_tasks_sql.should contain("LEFT JOIN")
+
+      # This would include tasks without assignees due to LEFT JOIN
+      all_tasks = all_tasks_query.to_a
+      all_tasks.size.should eq(2) # Both tasks, regardless of assignee
+
+      # Compare with explicit INNER JOIN on optional association
+      # Should only return tasks that have assignees
+      only_assigned_tasks = Task.inner_join("assignee").to_a
+      only_assigned_tasks.size.should eq(1) # Only the assigned task
+    end
+  end
 end

@@ -132,7 +132,7 @@ module Takarik::Data
       all.join(table, on)
     end
 
-    def self.joins(association_name : String)
+    def self.joins(association_name : String | Symbol)
       all.join(association_name)
     end
 
@@ -140,7 +140,7 @@ module Takarik::Data
       all.inner_join(table, on)
     end
 
-    def self.inner_join(association_name : String)
+    def self.inner_join(association_name : String | Symbol)
       all.inner_join(association_name)
     end
 
@@ -148,7 +148,7 @@ module Takarik::Data
       all.left_join(table, on)
     end
 
-    def self.left_join(association_name : String)
+    def self.left_join(association_name : String | Symbol)
       all.left_join(association_name)
     end
 
@@ -156,7 +156,7 @@ module Takarik::Data
       all.right_join(table, on)
     end
 
-    def self.right_join(association_name : String)
+    def self.right_join(association_name : String | Symbol)
       all.right_join(association_name)
     end
 
@@ -253,7 +253,9 @@ module Takarik::Data
     end
 
     def self.create(**attributes)
-      create(attributes.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+      # Process association objects first
+      processed_attributes = process_association_attributes_for_create(attributes)
+      create(processed_attributes)
     end
 
     # ========================================
@@ -384,14 +386,18 @@ module Takarik::Data
     end
 
     def update(attributes : Hash(String, DB::Any))
-      attributes.each do |key, value|
+      # Check if any attributes are association objects and process them
+      processed_attributes = process_db_any_attributes_for_associations(attributes)
+      processed_attributes.each do |key, value|
         set_attribute(key, value)
       end
       save
     end
 
     def update(**attributes)
-      update(attributes.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+      # Process association objects first
+      processed_attributes = process_association_attributes_for_update(attributes)
+      update(processed_attributes)
     end
 
     def touch(*attributes)
@@ -654,6 +660,30 @@ module Takarik::Data
       end
     end
 
+    # Process Hash(String, DB::Any) attributes to handle association objects
+    private def process_db_any_attributes_for_associations(attributes : Hash(String, DB::Any))
+      processed = Hash(String, DB::Any).new
+
+      # Get all belongs_to associations for this model
+      belongs_to_associations = self.class.associations.select(&.type.belongs_to?)
+
+      attributes.each do |key, value|
+        # Check if this key corresponds to a belongs_to association
+        association = belongs_to_associations.find { |a| a.name == key }
+
+        if association && value.is_a?(BaseModel)
+          # Extract the primary key from the model object
+          primary_key_value = value.get_attribute(association.primary_key)
+          processed[association.foreign_key] = primary_key_value
+        else
+          # Regular attribute - keep as is
+          processed[key] = value
+        end
+      end
+
+      processed
+    end
+
     # ========================================
     # INSTANCE METHODS - COMPARISON
     # ========================================
@@ -719,6 +749,58 @@ module Takarik::Data
       @attributes.each do |column_name, value|
         assign_instance_variables_from_attributes
       end
+    end
+
+    # Process attributes to handle association objects for create
+    private def self.process_association_attributes_for_create(attributes)
+      processed = Hash(String, DB::Any).new
+
+      # Get all belongs_to associations for this model
+      belongs_to_associations = associations.select(&.type.belongs_to?)
+
+      attributes.each do |key, value|
+        key_str = key.to_s
+
+        # Check if this key corresponds to a belongs_to association
+        association = belongs_to_associations.find { |a| a.name == key_str }
+
+        if association && value.is_a?(BaseModel)
+          # Extract the primary key from the model object
+          primary_key_value = value.get_attribute(association.primary_key)
+          processed[association.foreign_key] = primary_key_value
+        else
+          # Regular attribute - convert to DB::Any
+          processed[key_str] = value.as(DB::Any)
+        end
+      end
+
+      processed
+    end
+
+    # Process attributes to handle association objects for update
+    private def process_association_attributes_for_update(attributes)
+      processed = Hash(String, DB::Any).new
+
+      # Get all belongs_to associations for this model
+      belongs_to_associations = self.class.associations.select(&.type.belongs_to?)
+
+      attributes.each do |key, value|
+        key_str = key.to_s
+
+        # Check if this key corresponds to a belongs_to association
+        association = belongs_to_associations.find { |a| a.name == key_str }
+
+        if association && value.is_a?(BaseModel)
+          # Extract the primary key from the model object
+          primary_key_value = value.get_attribute(association.primary_key)
+          processed[association.foreign_key] = primary_key_value
+        else
+          # Regular attribute - convert to DB::Any
+          processed[key_str] = value.as(DB::Any)
+        end
+      end
+
+      processed
     end
 
     # ========================================

@@ -112,6 +112,33 @@ module Takarik::Data
     # VALIDATION MACROS
     # ========================================
 
+    # Generic validates macro (Rails-style) - dispatches to specific validation macros
+    macro validates(field, **options)
+      {% if options[:presence] %}
+        validates_presence_of {{field}}
+      {% end %}
+
+      {% if options[:length] %}
+        {% length_opts = options[:length] %}
+        validates_length_of {{field}}{% for key, value in length_opts %}, {{key}}: {{value}}{% end %}
+      {% end %}
+
+      {% if options[:format] %}
+        {% format_opts = options[:format] %}
+        validates_format_of {{field}}, with: {{format_opts[:with]}}{% if format_opts[:message] %}, message: {{format_opts[:message]}}{% end %}
+      {% end %}
+
+      {% if options[:uniqueness] %}
+        validates_uniqueness_of {{field}}
+      {% end %}
+
+      {% if options[:numericality] %}
+        {% num_opts = options[:numericality] %}
+        validates_numericality_of {{field}}{% for key, value in num_opts %}, {{key}}: {{value}}{% end %}
+      {% end %}
+    end
+
+    # Specific validation macros
     macro validates_presence_of(*fields)
       {% for field in fields %}
         {% field_name = field.stringify.gsub(/^:/, "") %}
@@ -153,6 +180,22 @@ module Takarik::Data
             if str_value.size != {{options[:is]}}
               errors << "is the wrong length (should be {{options[:is]}} characters)"
             end
+          {% end %}
+
+          {% if options[:in] || options[:within] %}
+            {% range = options[:in] || options[:within] %}
+            {% if range.is_a?(RangeLiteral) %}
+              {% range_start = range.begin %}
+              {% range_end = range.end %}
+              unless str_value.size >= {{range_start}} && str_value.size <= {{range_end}}
+                errors << "is the wrong length (should be within {{range}})"
+              end
+            {% else %}
+              # Handle runtime range
+              unless ({{range}}).includes?(str_value.size)
+                errors << "is the wrong length (should be within {{range}})"
+              end
+            {% end %}
           {% end %}
         end
 
@@ -272,6 +315,24 @@ module Takarik::Data
             {% if options[:equal_to] %}
               if numeric_value != {{options[:equal_to]}}
                 errors << "must be equal to {{options[:equal_to]}}"
+              end
+            {% end %}
+
+            {% if options[:only_integer] %}
+              unless numeric_value == numeric_value.to_i
+                errors << "must be an integer"
+              end
+            {% end %}
+
+            {% if options[:odd] %}
+              unless numeric_value.to_i.odd?
+                errors << "must be odd"
+              end
+            {% end %}
+
+            {% if options[:even] %}
+              unless numeric_value.to_i.even?
+                errors << "must be even"
               end
             {% end %}
           end

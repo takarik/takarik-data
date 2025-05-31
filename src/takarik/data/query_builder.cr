@@ -117,32 +117,33 @@ module Takarik::Data
     # JOIN METHODS
     # ========================================
 
-    def join(association_name : String)
-      add_join("JOIN", association_name)
+    def join(association_name : String | Symbol)
+      @has_joins = true
+      add_smart_association_join(association_name.to_s)
     end
 
     def join(table : String, on : String)
       add_join("JOIN", table, on)
     end
 
-    def inner_join(association_name : String)
-      add_join("INNER JOIN", association_name)
+    def inner_join(association_name : String | Symbol)
+      add_join("INNER JOIN", association_name.to_s)
     end
 
     def inner_join(table : String, on : String)
       add_join("INNER JOIN", table, on)
     end
 
-    def left_join(association_name : String)
-      add_join("LEFT JOIN", association_name)
+    def left_join(association_name : String | Symbol)
+      add_join("LEFT JOIN", association_name.to_s)
     end
 
     def left_join(table : String, on : String)
       add_join("LEFT JOIN", table, on)
     end
 
-    def right_join(association_name : String)
-      add_join("RIGHT JOIN", association_name)
+    def right_join(association_name : String | Symbol)
+      add_join("RIGHT JOIN", association_name.to_s)
     end
 
     def right_join(table : String, on : String)
@@ -510,6 +511,30 @@ module Takarik::Data
 
       @joins << "#{join_type} #{associated_table} ON #{on_condition}"
       self
+    end
+
+    # Smart association join that automatically chooses the correct join type based on association configuration
+    private def add_smart_association_join(association_name : String)
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+
+      unless association
+        raise "Association '#{association_name}' not found for #{@model_class.name}"
+      end
+
+      # Choose join type based on association configuration
+      join_type = case association.type
+      when .belongs_to?
+        # For belongs_to associations, use the optional parameter to determine join type
+        association.optional ? "LEFT JOIN" : "INNER JOIN"
+      when .has_many?, .has_one?
+        # For has_many/has_one, typically use LEFT JOIN since the parent might not have children
+        "LEFT JOIN"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+
+      add_association_join(join_type, association_name)
     end
 
     private def get_prefixed_columns
