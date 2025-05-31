@@ -17,10 +17,6 @@ module Takarik::Data
     @@connection = DB.open(database_url)
   end
 
-  # Forward declaration for QueryBuilder
-  class QueryBuilder(T)
-  end
-
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
   abstract class BaseModel
@@ -76,104 +72,104 @@ module Takarik::Data
     # CLASS METHODS - QUERY BUILDING
     # ========================================
 
-    def self.query
+    def self.all
       QueryBuilder(self).new(self)
     end
 
     def self.where(conditions : Hash(String, DB::Any))
-      QueryBuilder(self).new(self).where(conditions)
+      all.where(conditions)
     end
 
     def self.where(**conditions)
-      QueryBuilder(self).new(self).where(**conditions)
+      all.where(**conditions)
     end
 
     def self.where_not(**conditions)
-      QueryBuilder(self).new(self).where_not(**conditions)
+      all.where_not(**conditions)
     end
 
     def self.where(condition : String, *params : DB::Any)
-      QueryBuilder(self).new(self).where(condition, *params)
+      all.where(condition, *params)
     end
 
     def self.where(column_with_operator : String, value : DB::Any)
-      QueryBuilder(self).new(self).where(column_with_operator, value)
+      all.where(column_with_operator, value)
     end
 
     def self.where(column : String, values : Array(DB::Any))
-      QueryBuilder(self).new(self).where(column, values)
+      all.where(column, values)
     end
 
     def self.where_not(column : String, values : Array(DB::Any))
-      QueryBuilder(self).new(self).where_not(column, values)
+      all.where_not(column, values)
     end
 
     def self.select(*columns : String)
-      QueryBuilder(self).new(self).select(*columns)
+      all.select(*columns)
     end
 
     def self.select(columns : Array(String))
-      QueryBuilder(self).new(self).select(columns)
+      all.select(columns)
     end
 
     def self.order(column : String, direction : String = "ASC")
-      QueryBuilder(self).new(self).order(column, direction)
+      all.order(column, direction)
     end
 
     def self.order(**columns)
-      QueryBuilder(self).new(self).order(**columns)
+      all.order(**columns)
     end
 
     def self.limit(count : Int32)
-      QueryBuilder(self).new(self).limit(count)
+      all.limit(count)
     end
 
     def self.offset(count : Int32)
-      QueryBuilder(self).new(self).offset(count)
+      all.offset(count)
     end
 
     def self.joins(table : String, on : String)
-      QueryBuilder(self).new(self).join(table, on)
+      all.join(table, on)
     end
 
     def self.joins(association_name : String)
-      QueryBuilder(self).new(self).join(association_name)
+      all.join(association_name)
     end
 
     def self.inner_join(table : String, on : String)
-      QueryBuilder(self).new(self).inner_join(table, on)
+      all.inner_join(table, on)
     end
 
     def self.inner_join(association_name : String)
-      QueryBuilder(self).new(self).inner_join(association_name)
+      all.inner_join(association_name)
     end
 
     def self.left_join(table : String, on : String)
-      QueryBuilder(self).new(self).left_join(table, on)
+      all.left_join(table, on)
     end
 
     def self.left_join(association_name : String)
-      QueryBuilder(self).new(self).left_join(association_name)
+      all.left_join(association_name)
     end
 
     def self.right_join(table : String, on : String)
-      QueryBuilder(self).new(self).right_join(table, on)
+      all.right_join(table, on)
     end
 
     def self.right_join(association_name : String)
-      QueryBuilder(self).new(self).right_join(association_name)
+      all.right_join(association_name)
     end
 
     def self.group(*columns : String)
-      QueryBuilder(self).new(self).group(*columns)
+      all.group(*columns)
     end
 
     def self.having(condition : String, *params : DB::Any)
-      QueryBuilder(self).new(self).having(condition, *params)
+      all.having(condition, *params)
     end
 
     def self.page(page_number : Int32, per_page : Int32)
-      QueryBuilder(self).new(self).page(page_number, per_page)
+      all.page(page_number, per_page)
     end
 
     # ========================================
@@ -181,28 +177,24 @@ module Takarik::Data
     # ========================================
 
     def self.sum(column : String)
-      QueryBuilder(self).new(self).sum(column)
+      all.sum(column)
     end
 
     def self.average(column : String)
-      QueryBuilder(self).new(self).average(column)
+      all.average(column)
     end
 
     def self.minimum(column : String)
-      QueryBuilder(self).new(self).minimum(column)
+      all.minimum(column)
     end
 
     def self.maximum(column : String)
-      QueryBuilder(self).new(self).maximum(column)
+      all.maximum(column)
     end
 
     # ========================================
     # CLASS METHODS - FINDERS
     # ========================================
-
-    def self.all
-      query
-    end
 
     def self.find(id)
       query = "SELECT * FROM #{table_name} WHERE #{primary_key} = ?"
@@ -1460,25 +1452,25 @@ module Takarik::Data
     macro generate_base_model_where_overloads
       {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time] %}
         def self.where(condition : String, *params : {{type}})
-          QueryBuilder(self).new(self).where(condition, *params)
+          all.where(condition, *params)
         end
 
         def self.where(column : String, values : Array({{type}}))
-          QueryBuilder(self).new(self).where(column, values)
+          all.where(column, values)
         end
 
         def self.where(column_with_operator : String, value : {{type}})
-          QueryBuilder(self).new(self).where(column_with_operator, value)
+          all.where(column_with_operator, value)
         end
 
         def self.where_not(column : String, values : Array({{type}}))
-          QueryBuilder(self).new(self).where_not(column, values)
+          all.where_not(column, values)
         end
       {% end %}
 
       {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
         def self.where(column : String, range : Range({{type}}, {{type}}))
-          QueryBuilder(self).new(self).where(column, range)
+          all.where(column, range)
         end
       {% end %}
     end
