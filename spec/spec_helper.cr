@@ -204,6 +204,71 @@ Takarik::Data.connection.exec <<-SQL
   )
 SQL
 
+# Create tables for many-to-many associations testing
+# Tables for has_many :through tests
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS assemblies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS parts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    part_number TEXT NOT NULL UNIQUE,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assembly_id INTEGER NOT NULL,
+    part_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    created_at DATETIME,
+    updated_at DATETIME,
+    FOREIGN KEY (assembly_id) REFERENCES assemblies (id),
+    FOREIGN KEY (part_id) REFERENCES parts (id)
+  )
+SQL
+
+# Tables for has_and_belongs_to_many tests
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS courses_students (
+    course_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    PRIMARY KEY (course_id, student_id),
+    FOREIGN KEY (course_id) REFERENCES courses (id),
+    FOREIGN KEY (student_id) REFERENCES students (id)
+  )
+SQL
+
 # Test models
 class User < Takarik::Data::BaseModel
   table_name "users"
@@ -412,6 +477,15 @@ end
 # Clean up before each test
 Spec.before_each do
   # Clean up test tables in correct order (child tables first)
+  # Clean up many-to-many tables first
+  Takarik::Data.connection.exec("DELETE FROM courses_students")
+  Takarik::Data.connection.exec("DELETE FROM manifests")
+  Takarik::Data.connection.exec("DELETE FROM courses")
+  Takarik::Data.connection.exec("DELETE FROM students")
+  Takarik::Data.connection.exec("DELETE FROM assemblies")
+  Takarik::Data.connection.exec("DELETE FROM parts")
+
+  # Clean up existing test tables
   Takarik::Data.connection.exec("DELETE FROM tasks")
   Takarik::Data.connection.exec("DELETE FROM users_optional")
   Takarik::Data.connection.exec("DELETE FROM projects")
