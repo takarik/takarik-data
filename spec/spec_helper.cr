@@ -269,6 +269,53 @@ Takarik::Data.connection.exec <<-SQL
   )
 SQL
 
+# Tables for polymorphic associations testing
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS pictures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    imageable_id INTEGER,
+    imageable_type TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS employees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    department TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    price DECIMAL(10,2),
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+  )
+SQL
+
+# Create polymorphic index for better query performance
+Takarik::Data.connection.exec <<-SQL
+  CREATE INDEX IF NOT EXISTS idx_pictures_polymorphic ON pictures (imageable_type, imageable_id)
+SQL
+
 # Test models
 class User < Takarik::Data::BaseModel
   table_name "users"
@@ -485,6 +532,12 @@ Spec.before_each do
   Takarik::Data.connection.exec("DELETE FROM assemblies")
   Takarik::Data.connection.exec("DELETE FROM parts")
 
+  # Clean up polymorphic tables
+  Takarik::Data.connection.exec("DELETE FROM pictures")
+  Takarik::Data.connection.exec("DELETE FROM employees")
+  Takarik::Data.connection.exec("DELETE FROM products")
+  Takarik::Data.connection.exec("DELETE FROM events")
+
   # Clean up existing test tables
   Takarik::Data.connection.exec("DELETE FROM tasks")
   Takarik::Data.connection.exec("DELETE FROM users_optional")
@@ -506,4 +559,54 @@ Spec.before_each do
   Takarik::Data.connection.exec("DELETE FROM comments")
   Takarik::Data.connection.exec("DELETE FROM posts")
   Takarik::Data.connection.exec("DELETE FROM users")
+end
+
+# Test models for polymorphic associations
+class Picture < Takarik::Data::BaseModel
+  table_name "pictures"
+
+  primary_key :id, Int32
+  column :name, String
+  column :imageable_id, Int32
+  column :imageable_type, String
+  timestamps
+
+  # Polymorphic belongs_to association
+  belongs_to :imageable, polymorphic: true
+end
+
+class Employee < Takarik::Data::BaseModel
+  table_name "employees"
+
+  primary_key :id, Int32
+  column :name, String
+  column :department, String
+  timestamps
+
+  # Polymorphic has_many association
+  has_many :pictures, as: :imageable, dependent: :destroy
+end
+
+class Product < Takarik::Data::BaseModel
+  table_name "products"
+
+  primary_key :id, Int32
+  column :name, String
+  column :price, Float64
+  timestamps
+
+  # Polymorphic has_many association
+  has_many :pictures, as: :imageable, dependent: :destroy
+end
+
+class Event < Takarik::Data::BaseModel
+  table_name "events"
+
+  primary_key :id, Int32
+  column :title, String
+  column :description, String
+  timestamps
+
+  # Polymorphic has_many association (no dependent destroy)
+  has_many :pictures, as: :imageable
 end

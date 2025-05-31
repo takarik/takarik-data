@@ -10,6 +10,34 @@ module Takarik::Data
       HasOne
       HasManyThrough
       HasAndBelongsToMany
+      BelongsToPolymorphic
+      HasManyPolymorphic
+    end
+
+    # ========================================
+    # POLYMORPHIC REGISTRY
+    # ========================================
+
+    # Global registry for polymorphic lookups
+    @@polymorphic_registry = {} of String => BaseModel.class
+
+    # Global registry for association name to target class mappings
+    @@association_target_registry = {} of String => BaseModel.class
+
+    def self.register_polymorphic_class(name : String, klass : BaseModel.class)
+      @@polymorphic_registry[name] = klass
+    end
+
+    def self.find_polymorphic_class(name : String) : (BaseModel.class)?
+      @@polymorphic_registry[name]?
+    end
+
+    def self.register_association_target(association_name : String, target_class : BaseModel.class)
+      @@association_target_registry[association_name] = target_class
+    end
+
+    def self.find_association_target(association_name : String) : (BaseModel.class)?
+      @@association_target_registry[association_name]?
     end
 
     # ========================================
@@ -19,17 +47,21 @@ module Takarik::Data
     struct Association
       getter name : String
       getter type : AssociationType
-      getter class_type : BaseModel.class
+      getter class_type : (BaseModel.class)?
       getter foreign_key : String
       getter primary_key : String
       getter dependent : Symbol?
       getter optional : Bool
       getter through : String?
       getter join_table : String?
+      getter polymorphic : Bool
+      getter as_name : String?
+      getter polymorphic_type : String?
 
-      def initialize(@name : String, @type : AssociationType, @class_type : BaseModel.class,
+      def initialize(@name : String, @type : AssociationType, @class_type : (BaseModel.class)?,
                      @foreign_key : String, @primary_key : String = "id", @dependent : Symbol? = nil,
-                     @optional : Bool = false, @through : String? = nil, @join_table : String? = nil)
+                     @optional : Bool = false, @through : String? = nil, @join_table : String? = nil,
+                     @polymorphic : Bool = false, @as_name : String? = nil, @polymorphic_type : String? = nil)
       end
     end
 
@@ -57,11 +89,12 @@ module Takarik::Data
     # ========================================
 
     module ClassMethods
-      def add_association(name : String, type : AssociationType, class_type : BaseModel.class,
+      def add_association(name : String, type : AssociationType, class_type : (BaseModel.class)?,
                              foreign_key : String, primary_key : String, dependent : Symbol?, optional : Bool,
-                             through : String? = nil, join_table : String? = nil)
+                             through : String? = nil, join_table : String? = nil, polymorphic : Bool = false,
+                             as_name : String? = nil, polymorphic_type : String? = nil)
         @@associations[self.name] ||= [] of Association
-        @@associations[self.name] << Association.new(name, type, class_type, foreign_key, primary_key, dependent, optional, through, join_table)
+        @@associations[self.name] << Association.new(name, type, class_type, foreign_key, primary_key, dependent, optional, through, join_table, polymorphic, as_name, polymorphic_type)
       end
 
       def associations
@@ -94,10 +127,10 @@ module Takarik::Data
 
     private def destroy_associated_records(association : Association, connection = nil)
       case association.type
-      when .belongs_to?
+      when .belongs_to?, .belongs_to_polymorphic?
         # For belongs_to, we don't destroy the parent
         return
-      when .has_many?
+      when .has_many?, .has_many_polymorphic?
         # For has_many with dependent: :destroy, we need to call destroy on each record
         # to trigger their callbacks and nested dependent associations
         records = get_associated_records(association)
@@ -124,33 +157,67 @@ module Takarik::Data
 
     private def delete_associated_records(association : Association, connection = nil)
       case association.type
-      when .belongs_to?
+      when .belongs_to?, .belongs_to_polymorphic?
         return
-      when .has_many?, .has_one?
+      when .has_many?, .has_one?, .has_many_polymorphic?
         primary_key_value = get_attribute(association.primary_key)
         return unless primary_key_value
 
-        # Use the class to get table name
-        table_name = association.class_type.table_name
-        query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
-        conn = connection || self.class.connection
-        conn.exec(query, primary_key_value)
+        # Get table name dynamically for polymorphic associations
+        if association.type.has_many_polymorphic?
+          target_class = Takarik::Data::Associations.find_association_target(association.name)
+          return unless target_class
+          table_name = target_class.table_name
+        else
+          # Use the class to get table name for regular associations
+          table_name = association.class_type.try(&.table_name)
+          return unless table_name
+        end
+
+        if association.type.has_many_polymorphic?
+          # For polymorphic associations, also check the type column
+          current_class_name = self.class.name.split("::").last
+          query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ? AND #{association.polymorphic_type} = ?"
+          conn = connection || self.class.connection
+          conn.exec(query, primary_key_value, current_class_name)
+        else
+          query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
+          conn = connection || self.class.connection
+          conn.exec(query, primary_key_value)
+        end
       end
     end
 
     private def nullify_associated_records(association : Association, connection = nil)
       case association.type
-      when .belongs_to?
+      when .belongs_to?, .belongs_to_polymorphic?
         return
-      when .has_many?, .has_one?
+      when .has_many?, .has_one?, .has_many_polymorphic?
         primary_key_value = get_attribute(association.primary_key)
         return unless primary_key_value
 
-        # Use the class to get table name
-        table_name = association.class_type.table_name
-        query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
-        conn = connection || self.class.connection
-        conn.exec(query, primary_key_value)
+        # Get table name dynamically for polymorphic associations
+        if association.type.has_many_polymorphic?
+          target_class = Takarik::Data::Associations.find_association_target(association.name)
+          return unless target_class
+          table_name = target_class.table_name
+        else
+          # Use the class to get table name for regular associations
+          table_name = association.class_type.try(&.table_name)
+          return unless table_name
+        end
+
+        if association.type.has_many_polymorphic?
+          # For polymorphic associations, also check the type column
+          current_class_name = self.class.name.split("::").last
+          query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ? AND #{association.polymorphic_type} = ?"
+          conn = connection || self.class.connection
+          conn.exec(query, primary_key_value, current_class_name)
+        else
+          query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
+          conn = connection || self.class.connection
+          conn.exec(query, primary_key_value)
+        end
       end
     end
 
@@ -159,215 +226,341 @@ module Takarik::Data
       primary_key_value = get_attribute(association.primary_key)
       return [] of BaseModel unless primary_key_value
 
-      # Use the actual class type directly
-      conditions = Hash(String, DB::Any).new
-      conditions[association.foreign_key] = primary_key_value
-      association.class_type.where(conditions).to_a.map(&.as(BaseModel))
+      case association.type
+      when .has_many_polymorphic?
+        # For polymorphic has_many, use dynamic lookup to find the target class
+        target_class = Takarik::Data::Associations.find_association_target(association.name)
+        return [] of BaseModel unless target_class
+
+        current_class_name = self.class.name.split("::").last
+        conditions = Hash(String, DB::Any).new
+        conditions[association.foreign_key] = primary_key_value
+        conditions[association.polymorphic_type.not_nil!] = current_class_name
+        target_class.where(conditions).to_a.map(&.as(BaseModel))
+      else
+        # Regular association handling
+        return [] of BaseModel unless association.class_type
+
+        conditions = Hash(String, DB::Any).new
+        conditions[association.foreign_key] = primary_key_value
+        association.class_type.not_nil!.where(conditions).to_a.map(&.as(BaseModel))
+      end
     end
 
     private def get_associated_record(association : Association) : BaseModel?
       primary_key_value = get_attribute(association.primary_key)
       return nil unless primary_key_value
 
+      return nil unless association.class_type
+
       # Use the actual class type directly
       conditions = Hash(String, DB::Any).new
       conditions[association.foreign_key] = primary_key_value
-      association.class_type.where(conditions).first.try(&.as(BaseModel))
+      association.class_type.not_nil!.where(conditions).first.try(&.as(BaseModel))
     end
 
     # ========================================
     # ASSOCIATION MACROS
     # ========================================
 
-    macro belongs_to(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil, optional = false)
-      # Determine the class type from class_name parameter
-      {% if class_name %}
-        {% if class_name.is_a?(StringLiteral) %}
-          # Handle string class name - convert to class reference
-          {% class_type = class_name.camelcase.id %}
-        {% elsif class_name.is_a?(SymbolLiteral) %}
-          # Handle symbol class name - convert to class reference
-          {% class_type = class_name.id.stringify.camelcase.id %}
-        {% else %}
-          # Handle class reference directly
-          {% class_type = class_name.id %}
-        {% end %}
-      {% else %}
-        # Convert association name to class name (e.g., "user" -> "User")
-        {% class_type = name.id.stringify.camelcase.id %}
-      {% end %}
+    # Consolidated belongs_to macro (handles both regular and polymorphic associations)
+    macro belongs_to(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil, optional = false, **options)
+      {% polymorphic = options[:polymorphic] %}
+      {% if polymorphic %}
+        # Polymorphic belongs_to association
 
-      # Handle foreign key parameter
-      {% if foreign_key %}
-        {% if foreign_key.is_a?(SymbolLiteral) %}
-          {% foreign_key_str = foreign_key.id.stringify %}
-        {% else %}
-          {% foreign_key_str = foreign_key %}
-        {% end %}
-      {% else %}
-        # Generate foreign key from association name (e.g., "user" -> "user_id")
-        {% foreign_key_str = name.id.stringify + "_id" %}
-      {% end %}
-
-      # Handle primary key parameter
-      {% if primary_key.is_a?(SymbolLiteral) %}
-        {% primary_key_str = primary_key.id.stringify %}
-      {% else %}
-        {% primary_key_str = primary_key %}
-      {% end %}
-
-      # Ensure dependent is a symbol or nil
-      {% if dependent && !dependent.is_a?(SymbolLiteral) %}
-        {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
-      {% end %}
-
-      # Add association metadata with actual class
-      add_association({{name.id.stringify}}, AssociationType::BelongsTo, {{class_type}},
-                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, {{optional}})
-
-      # Add validation for required associations (when optional: false)
-      {% unless optional %}
-        validates_presence_of {{foreign_key_str.id}}
-      {% end %}
-
-      # Define the getter method
-      def {{name.id}}
-        foreign_key_value = get_attribute({{foreign_key_str}})
-        return nil unless foreign_key_value
-
-        {{class_type}}.find(foreign_key_value)
-      end
-
-      # Define the setter method
-      def {{name.id}}=(record : {{class_type}}?)
-        if record
-          primary_key_value = record.get_attribute({{primary_key_str}})
-          set_attribute({{foreign_key_str}}, primary_key_value)
-        else
-          {% if optional %}
-            set_attribute({{foreign_key_str}}, nil)
+        # Handle foreign key parameter
+        {% if foreign_key %}
+          {% if foreign_key.is_a?(SymbolLiteral) %}
+            {% foreign_key_str = foreign_key.id.stringify %}
           {% else %}
-            # For required associations, setting to nil should be allowed during object construction
-            # but validation will catch it during save
-            set_attribute({{foreign_key_str}}, nil)
+            {% foreign_key_str = foreign_key %}
           {% end %}
-        end
-        record
-      end
-
-      # Define the build method
-      def build_{{name.id}}(**attributes)
-        record = {{class_type}}.new
-        attributes.each do |key, value|
-          record.set_attribute(key.to_s, value.as(DB::Any))
-        end
-        self.{{name.id}} = record
-        record
-      end
-
-      # Define the create method
-      def create_{{name.id}}(**attributes)
-        record = build_{{name.id}}(**attributes)
-        record.save
-        record
-      end
-    end
-
-    # Regular has_many association
-    macro has_many(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil)
-      # Determine the class type from class_name parameter
-      {% if class_name %}
-        {% if class_name.is_a?(StringLiteral) %}
-          {% class_type = class_name.camelcase.id %}
-        {% elsif class_name.is_a?(SymbolLiteral) %}
-          {% class_type = class_name.id.stringify.camelcase.id %}
         {% else %}
-          {% class_type = class_name.id %}
+          # Generate foreign key from association name (e.g., "imageable" -> "imageable_id")
+          {% foreign_key_str = name.id.stringify + "_id" %}
         {% end %}
-      {% else %}
-        # Convert plural association name to singular class name using inline singularization
-        {%
-          name_str = name.id.stringify
-          if name_str.ends_with?("ies") && name_str.size > 3
-            singular_name = name_str[0..-4] + "y"
-          elsif name_str.ends_with?("ves") && name_str.size > 3
-            singular_name = name_str[0..-4] + "f"
-          elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
-            singular_name = name_str[0..-2]
+
+        # Generate type column name (e.g., "imageable" -> "imageable_type")
+        {% type_column_str = name.id.stringify + "_type" %}
+
+        # Handle primary key parameter
+        {% if primary_key.is_a?(SymbolLiteral) %}
+          {% primary_key_str = primary_key.id.stringify %}
+        {% else %}
+          {% primary_key_str = primary_key %}
+        {% end %}
+
+        # Ensure dependent is a symbol or nil
+        {% if dependent && !dependent.is_a?(SymbolLiteral) %}
+          {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
+        {% end %}
+
+        # Add association metadata
+        add_association({{name.id.stringify}}, AssociationType::BelongsToPolymorphic, nil,
+                       {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, {{optional}},
+                       polymorphic: true, polymorphic_type: {{type_column_str}})
+
+        # Add validation for required associations (when optional: false)
+        {% unless optional %}
+          validates_presence_of {{foreign_key_str.id}}
+          validates_presence_of {{type_column_str.id}}
+        {% end %}
+
+        # Define the getter method
+        def {{name.id}}
+          foreign_key_value = get_attribute({{foreign_key_str}})
+          type_value = get_attribute({{type_column_str}})
+
+          return nil unless foreign_key_value && type_value
+
+          # For polymorphic associations, use the registry to dynamically resolve the class
+          type_name = type_value.to_s
+          klass = Takarik::Data::Associations.find_polymorphic_class(type_name)
+
+          return nil unless klass
+
+          klass.find(foreign_key_value)
+        rescue
+          nil
+        end
+
+        # Define the setter method
+        def {{name.id}}=(record : Takarik::Data::BaseModel?)
+          if record
+            primary_key_value = record.get_attribute({{primary_key_str}})
+            set_attribute({{foreign_key_str}}, primary_key_value)
+            set_attribute({{type_column_str}}, record.class.name.split("::").last)
           else
-            singular_name = name_str
+            {% if optional %}
+              set_attribute({{foreign_key_str}}, nil)
+              set_attribute({{type_column_str}}, nil)
+            {% else %}
+              set_attribute({{foreign_key_str}}, nil)
+              set_attribute({{type_column_str}}, nil)
+            {% end %}
           end
-          class_type = singular_name.camelcase.id
-        %}
-      {% end %}
+          record
+        end
 
-      # Handle foreign key parameter
-      {% if foreign_key %}
-        {% if foreign_key.is_a?(SymbolLiteral) %}
-          {% foreign_key_str = foreign_key.id.stringify %}
+        # Define the build method
+        def build_{{name.id}}(type : Takarik::Data::BaseModel.class, **attributes)
+          record = type.new
+          attributes.each do |key, value|
+            record.set_attribute(key.to_s, value.as(DB::Any))
+          end
+          self.{{name.id}} = record
+          record
+        end
+
+        # Define the create method
+        def create_{{name.id}}(type : Takarik::Data::BaseModel.class, **attributes)
+          record = build_{{name.id}}(type, **attributes)
+          record.save
+          record
+        end
+      {% else %}
+        # Regular belongs_to association
+
+        # Determine the class type from class_name parameter
+        {% if class_name %}
+          {% if class_name.is_a?(StringLiteral) %}
+            # Handle string class name - convert to class reference
+            {% class_type = class_name.camelcase.id %}
+          {% elsif class_name.is_a?(SymbolLiteral) %}
+            # Handle symbol class name - convert to class reference
+            {% class_type = class_name.id.stringify.camelcase.id %}
+          {% else %}
+            # Handle class reference directly
+            {% class_type = class_name.id %}
+          {% end %}
         {% else %}
-          {% foreign_key_str = foreign_key %}
+          # Convert association name to class name (e.g., "user" -> "User")
+          {% class_type = name.id.stringify.camelcase.id %}
         {% end %}
-      {% else %}
-        {% foreign_key_str = @type.name.split("::").last.underscore + "_id" %}
-      {% end %}
 
-      # Handle primary key parameter
-      {% if primary_key.is_a?(SymbolLiteral) %}
-        {% primary_key_str = primary_key.id.stringify %}
-      {% else %}
-        {% primary_key_str = primary_key %}
-      {% end %}
+        # Handle foreign key parameter
+        {% if foreign_key %}
+          {% if foreign_key.is_a?(SymbolLiteral) %}
+            {% foreign_key_str = foreign_key.id.stringify %}
+          {% else %}
+            {% foreign_key_str = foreign_key %}
+          {% end %}
+        {% else %}
+          # Generate foreign key from association name (e.g., "user" -> "user_id")
+          {% foreign_key_str = name.id.stringify + "_id" %}
+        {% end %}
 
-      # Ensure dependent is a symbol or nil
-      {% if dependent && !dependent.is_a?(SymbolLiteral) %}
-        {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
-      {% end %}
+        # Handle primary key parameter
+        {% if primary_key.is_a?(SymbolLiteral) %}
+          {% primary_key_str = primary_key.id.stringify %}
+        {% else %}
+          {% primary_key_str = primary_key %}
+        {% end %}
 
-      # Add association metadata
-      add_association({{name.id.stringify}}, AssociationType::HasMany, {{class_type}},
-                     {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false)
+        # Ensure dependent is a symbol or nil
+        {% if dependent && !dependent.is_a?(SymbolLiteral) %}
+          {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
+        {% end %}
 
-      # Define the getter method
-      def {{name.id}}
-        primary_key_value = get_attribute({{primary_key_str}})
+        # Add association metadata with actual class
+        add_association({{name.id.stringify}}, AssociationType::BelongsTo, {{class_type}},
+                       {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, {{optional}})
 
-        unless primary_key_value
-          return {{class_type}}.where("1 = ?", 0)
+        # Add validation for required associations (when optional: false)
+        {% unless optional %}
+          validates_presence_of {{foreign_key_str.id}}
+        {% end %}
+
+        # Define the getter method
+        def {{name.id}}
+          foreign_key_value = get_attribute({{foreign_key_str}})
+          return nil unless foreign_key_value
+
+          {{class_type}}.find(foreign_key_value)
         end
 
-        conditions = Hash(String, DB::Any).new
-        conditions[{{foreign_key_str}}] = primary_key_value
-        {{class_type}}.where(conditions)
-      end
-
-      # Define the build method
-      def build_{{name.id}}(**attributes)
-        record = {{class_type}}.new
-        attributes.each do |key, value|
-          record.set_attribute(key.to_s, value.as(DB::Any))
+        # Define the setter method
+        def {{name.id}}=(record : {{class_type}}?)
+          if record
+            primary_key_value = record.get_attribute({{primary_key_str}})
+            set_attribute({{foreign_key_str}}, primary_key_value)
+          else
+            {% if optional %}
+              set_attribute({{foreign_key_str}}, nil)
+            {% else %}
+              # For required associations, setting to nil should be allowed during object construction
+              # but validation will catch it during save
+              set_attribute({{foreign_key_str}}, nil)
+            {% end %}
+          end
+          record
         end
 
-        # Set the foreign key
-        primary_key_value = get_attribute({{primary_key_str}})
-        record.set_attribute({{foreign_key_str}}, primary_key_value) if primary_key_value
+        # Define the build method
+        def build_{{name.id}}(**attributes)
+          record = {{class_type}}.new
+          attributes.each do |key, value|
+            record.set_attribute(key.to_s, value.as(DB::Any))
+          end
+          self.{{name.id}} = record
+          record
+        end
 
-        record
-      end
-
-      # Define the create method
-      def create_{{name.id}}(**attributes)
-        record = build_{{name.id}}(**attributes)
-        record.save
-        record
-      end
+        # Define the create method
+        def create_{{name.id}}(**attributes)
+          record = build_{{name.id}}(**attributes)
+          record.save
+          record
+        end
+      {% end %}
     end
 
-    # has_many :through association (macro overload)
-    macro has_many(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil, through = nil)
-      {% if through %}
+    # Consolidated has_many macro (handles regular, polymorphic, and through associations)
+    macro has_many(name, class_name = nil, foreign_key = nil, primary_key = "id", dependent = nil, **options)
+      {% as_value = options[:as] %}
+      {% through_value = options[:through] %}
+
+      {% if as_value %}
+        # Polymorphic has_many association (as: :imageable)
+
+        # Convert as parameter
+        {% as_str = as_value.is_a?(SymbolLiteral) ? as_value.id.stringify : as_value %}
+
+        # Determine the class type from class_name parameter
+        {% if class_name %}
+          {% if class_name.is_a?(StringLiteral) %}
+            {% class_type = class_name.camelcase.id %}
+          {% elsif class_name.is_a?(SymbolLiteral) %}
+            {% class_type = class_name.id.stringify.camelcase.id %}
+          {% else %}
+            {% class_type = class_name.id %}
+          {% end %}
+        {% else %}
+          # Convert plural association name to singular class name using inline singularization
+          {%
+            name_str = name.id.stringify
+            if name_str.ends_with?("ies") && name_str.size > 3
+              singular_name = name_str[0..-4] + "y"
+            elsif name_str.ends_with?("ves") && name_str.size > 3
+              singular_name = name_str[0..-4] + "f"
+            elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+              singular_name = name_str[0..-2]
+            else
+              singular_name = name_str
+            end
+            class_type = singular_name.camelcase.id
+          %}
+        {% end %}
+
+        # Generate foreign key and type column names
+        {% foreign_key_str = as_str + "_id" %}
+        {% type_column_str = as_str + "_type" %}
+
+        # Handle primary key parameter
+        {% if primary_key.is_a?(SymbolLiteral) %}
+          {% primary_key_str = primary_key.id.stringify %}
+        {% else %}
+          {% primary_key_str = primary_key %}
+        {% end %}
+
+        # Ensure dependent is a symbol or nil
+        {% if dependent && !dependent.is_a?(SymbolLiteral) %}
+          {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
+        {% end %}
+
+        # Add association metadata for polymorphic has_many
+        add_association({{name.id.stringify}}, AssociationType::HasManyPolymorphic, {{class_type}},
+                       {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false, nil, nil,
+                       true, {{as_str}}, {{type_column_str}})
+
+        # Register the association target for dynamic lookup
+        Takarik::Data::Associations.register_association_target({{name.id.stringify}}, {{class_type}})
+
+        # Define the getter method
+        def {{name.id}}
+          primary_key_value = get_attribute({{primary_key_str}})
+
+          unless primary_key_value
+            return {{class_type}}.where("1 = ?", 0)
+          end
+
+          # Query with both foreign key and type conditions
+          current_class_name = self.class.name.split("::").last
+          conditions = Hash(String, DB::Any).new
+          conditions[{{foreign_key_str}}] = primary_key_value
+          conditions[{{type_column_str}}] = current_class_name
+          {{class_type}}.where(conditions)
+        end
+
+        # Define the build method
+        def build_{{name.id}}(**attributes)
+          record = {{class_type}}.new
+          attributes.each do |key, value|
+            record.set_attribute(key.to_s, value.as(DB::Any))
+          end
+
+          # Set the foreign key and type
+          primary_key_value = get_attribute({{primary_key_str}})
+          current_class_name = self.class.name.split("::").last
+          record.set_attribute({{foreign_key_str}}, primary_key_value) if primary_key_value
+          record.set_attribute({{type_column_str}}, current_class_name)
+
+          record
+        end
+
+        # Define the create method
+        def create_{{name.id}}(**attributes)
+          record = build_{{name.id}}(**attributes)
+          record.save
+          record
+        end
+
+      {% elsif through_value %}
+        # has_many :through association (through: :manifests)
+
         # Convert through parameter
-        {% through_str = through.is_a?(SymbolLiteral) ? through.id.stringify : through %}
+        {% through_str = through_value.is_a?(SymbolLiteral) ? through_value.id.stringify : through_value %}
 
         # Determine the class type from class_name parameter
         {% if class_name %}
@@ -457,9 +650,96 @@ module Takarik::Data
 
           results
         end
+
       {% else %}
-        # This shouldn't happen since this macro is only for through associations
-        {% raise "has_many with through parameter expected, but through is nil" %}
+        # Regular has_many association
+
+        # Determine the class type from class_name parameter
+        {% if class_name %}
+          {% if class_name.is_a?(StringLiteral) %}
+            {% class_type = class_name.camelcase.id %}
+          {% elsif class_name.is_a?(SymbolLiteral) %}
+            {% class_type = class_name.id.stringify.camelcase.id %}
+          {% else %}
+            {% class_type = class_name.id %}
+          {% end %}
+        {% else %}
+          # Convert plural association name to singular class name using inline singularization
+          {%
+            name_str = name.id.stringify
+            if name_str.ends_with?("ies") && name_str.size > 3
+              singular_name = name_str[0..-4] + "y"
+            elsif name_str.ends_with?("ves") && name_str.size > 3
+              singular_name = name_str[0..-4] + "f"
+            elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+              singular_name = name_str[0..-2]
+            else
+              singular_name = name_str
+            end
+            class_type = singular_name.camelcase.id
+          %}
+        {% end %}
+
+        # Handle foreign key parameter
+        {% if foreign_key %}
+          {% if foreign_key.is_a?(SymbolLiteral) %}
+            {% foreign_key_str = foreign_key.id.stringify %}
+          {% else %}
+            {% foreign_key_str = foreign_key %}
+          {% end %}
+        {% else %}
+          {% foreign_key_str = @type.name.split("::").last.underscore + "_id" %}
+        {% end %}
+
+        # Handle primary key parameter
+        {% if primary_key.is_a?(SymbolLiteral) %}
+          {% primary_key_str = primary_key.id.stringify %}
+        {% else %}
+          {% primary_key_str = primary_key %}
+        {% end %}
+
+        # Ensure dependent is a symbol or nil
+        {% if dependent && !dependent.is_a?(SymbolLiteral) %}
+          {% raise "dependent option must be a symbol (e.g., :destroy, :delete_all, :nullify)" %}
+        {% end %}
+
+        # Add association metadata
+        add_association({{name.id.stringify}}, AssociationType::HasMany, {{class_type}},
+                       {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false)
+
+        # Define the getter method
+        def {{name.id}}
+          primary_key_value = get_attribute({{primary_key_str}})
+
+          unless primary_key_value
+            return {{class_type}}.where("1 = ?", 0)
+          end
+
+          conditions = Hash(String, DB::Any).new
+          conditions[{{foreign_key_str}}] = primary_key_value
+          {{class_type}}.where(conditions)
+        end
+
+        # Define the build method
+        def build_{{name.id}}(**attributes)
+          record = {{class_type}}.new
+          attributes.each do |key, value|
+            record.set_attribute(key.to_s, value.as(DB::Any))
+          end
+
+          # Set the foreign key
+          primary_key_value = get_attribute({{primary_key_str}})
+          record.set_attribute({{foreign_key_str}}, primary_key_value) if primary_key_value
+
+          record
+        end
+
+        # Define the create method
+        def create_{{name.id}}(**attributes)
+          record = build_{{name.id}}(**attributes)
+          record.save
+          record
+        end
       {% end %}
     end
 

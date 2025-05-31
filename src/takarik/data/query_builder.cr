@@ -497,8 +497,13 @@ module Takarik::Data
         raise "Association '#{association_name}' not found for #{@model_class.name}"
       end
 
+      # Skip polymorphic associations as they can't be joined directly
+      if association.polymorphic || association.class_type.nil?
+        raise "Cannot join polymorphic association '#{association_name}'"
+      end
+
       current_table = @model_class.table_name
-      associated_table = association.class_type.table_name
+      associated_table = association.class_type.not_nil!.table_name
 
       case association.type
       when .belongs_to?

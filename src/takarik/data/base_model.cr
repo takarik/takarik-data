@@ -684,6 +684,39 @@ module Takarik::Data
       processed
     end
 
+    # Process attributes to handle association objects for update
+    private def process_association_attributes_for_update(attributes)
+      processed = Hash(String, DB::Any).new
+
+      # Get all belongs_to associations for this model (including polymorphic)
+      belongs_to_associations = self.class.associations.select { |a| a.type.belongs_to? || a.type.belongs_to_polymorphic? }
+
+      attributes.each do |key, value|
+        key_str = key.to_s
+
+        # Check if this key corresponds to a belongs_to association
+        association = belongs_to_associations.find { |a| a.name == key_str }
+
+        if association && value.is_a?(BaseModel)
+          if association.type.belongs_to_polymorphic?
+            # Handle polymorphic association
+            primary_key_value = value.get_attribute(association.primary_key)
+            processed[association.foreign_key] = primary_key_value
+            processed[association.polymorphic_type.not_nil!] = value.class.name.split("::").last
+          else
+            # Handle regular belongs_to association
+            primary_key_value = value.get_attribute(association.primary_key)
+            processed[association.foreign_key] = primary_key_value
+          end
+        else
+          # Regular attribute - convert to DB::Any
+          processed[key_str] = value.as(DB::Any)
+        end
+      end
+
+      processed
+    end
+
     # ========================================
     # INSTANCE METHODS - COMPARISON
     # ========================================
@@ -755,8 +788,8 @@ module Takarik::Data
     private def self.process_association_attributes_for_create(attributes)
       processed = Hash(String, DB::Any).new
 
-      # Get all belongs_to associations for this model
-      belongs_to_associations = associations.select(&.type.belongs_to?)
+      # Get all belongs_to associations for this model (including polymorphic)
+      belongs_to_associations = associations.select { |a| a.type.belongs_to? || a.type.belongs_to_polymorphic? }
 
       attributes.each do |key, value|
         key_str = key.to_s
@@ -765,35 +798,16 @@ module Takarik::Data
         association = belongs_to_associations.find { |a| a.name == key_str }
 
         if association && value.is_a?(BaseModel)
-          # Extract the primary key from the model object
-          primary_key_value = value.get_attribute(association.primary_key)
-          processed[association.foreign_key] = primary_key_value
-        else
-          # Regular attribute - convert to DB::Any
-          processed[key_str] = value.as(DB::Any)
-        end
-      end
-
-      processed
-    end
-
-    # Process attributes to handle association objects for update
-    private def process_association_attributes_for_update(attributes)
-      processed = Hash(String, DB::Any).new
-
-      # Get all belongs_to associations for this model
-      belongs_to_associations = self.class.associations.select(&.type.belongs_to?)
-
-      attributes.each do |key, value|
-        key_str = key.to_s
-
-        # Check if this key corresponds to a belongs_to association
-        association = belongs_to_associations.find { |a| a.name == key_str }
-
-        if association && value.is_a?(BaseModel)
-          # Extract the primary key from the model object
-          primary_key_value = value.get_attribute(association.primary_key)
-          processed[association.foreign_key] = primary_key_value
+          if association.type.belongs_to_polymorphic?
+            # Handle polymorphic association
+            primary_key_value = value.get_attribute(association.primary_key)
+            processed[association.foreign_key] = primary_key_value
+            processed[association.polymorphic_type.not_nil!] = value.class.name.split("::").last
+          else
+            # Handle regular belongs_to association
+            primary_key_value = value.get_attribute(association.primary_key)
+            processed[association.foreign_key] = primary_key_value
+          end
         else
           # Regular attribute - convert to DB::Any
           processed[key_str] = value.as(DB::Any)
@@ -934,6 +948,11 @@ module Takarik::Data
     macro inherited
       # Call internal macro to set up defaults (can be overridden by explicit primary_key call)
       setup_default_primary_key
+
+      # Register this class for polymorphic lookups
+      {% if @type.ancestors.any? { |a| a.name.stringify.includes?("Associations") } %}
+        Takarik::Data::Associations.register_polymorphic_class({{@type.name.split("::").last}}, {{@type}})
+      {% end %}
     end
 
     macro setup_default_primary_key
