@@ -285,14 +285,20 @@ module Takarik::Data
           {% class_type = class_name.id %}
         {% end %}
       {% else %}
-        # Convert plural association name to singular class name (e.g., "posts" -> "Post")
-        {% singular_name = name.id.stringify %}
-        {% if singular_name.ends_with?("ies") %}
-          {% singular_name = singular_name.gsub(/ies$/, "y") %}
-        {% elsif singular_name.ends_with?("s") %}
-          {% singular_name = singular_name.gsub(/s$/, "") %}
-        {% end %}
-        {% class_type = singular_name.camelcase.id %}
+        # Convert plural association name to singular class name using inline singularization
+        {%
+          name_str = name.id.stringify
+          if name_str.ends_with?("ies") && name_str.size > 3
+            singular_name = name_str[0..-4] + "y"
+          elsif name_str.ends_with?("ves") && name_str.size > 3
+            singular_name = name_str[0..-4] + "f"
+          elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+            singular_name = name_str[0..-2]
+          else
+            singular_name = name_str
+          end
+          class_type = singular_name.camelcase.id
+        %}
       {% end %}
 
       # Handle foreign key parameter
@@ -373,14 +379,20 @@ module Takarik::Data
             {% class_type = class_name.id %}
           {% end %}
         {% else %}
-          # Convert plural association name to singular class name (e.g., "assemblies" -> "Assembly")
-          {% singular_name = name.id.stringify %}
-          {% if singular_name.ends_with?("ies") %}
-            {% singular_name = singular_name.gsub(/ies$/, "y") %}
-          {% elsif singular_name.ends_with?("s") %}
-            {% singular_name = singular_name.gsub(/s$/, "") %}
-          {% end %}
-          {% class_type = singular_name.camelcase.id %}
+          # Convert plural association name to singular class name using inline singularization
+          {%
+            name_str = name.id.stringify
+            if name_str.ends_with?("ies") && name_str.size > 3
+              singular_name = name_str[0..-4] + "y"
+            elsif name_str.ends_with?("ves") && name_str.size > 3
+              singular_name = name_str[0..-4] + "f"
+            elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+              singular_name = name_str[0..-2]
+            else
+              singular_name = name_str
+            end
+            class_type = singular_name.camelcase.id
+          %}
         {% end %}
 
         # Handle primary key parameter
@@ -407,16 +419,22 @@ module Takarik::Data
           end
 
           # Build query through the intermediate association
-          # Convert through association name to class name (e.g., "manifests" -> "Manifest")
-          {% through_singular = through_str %}
-          {% if through_singular.ends_with?("ies") %}
-            {% through_singular = through_singular.gsub(/ies$/, "y") %}
-          {% elsif through_singular.ends_with?("s") %}
-            {% through_singular = through_singular.gsub(/s$/, "") %}
-          {% end %}
-          {% through_class_name = through_singular.camelcase.id %}
+          # Convert through association name to class name using inline singularization
+          {%
+            through_str_val = through_str
+            if through_str_val.ends_with?("ies") && through_str_val.size > 3
+              through_singular = through_str_val[0..-4] + "y"
+            elsif through_str_val.ends_with?("ves") && through_str_val.size > 3
+              through_singular = through_str_val[0..-4] + "f"
+            elsif through_str_val.ends_with?("s") && !through_str_val.ends_with?("ss") && through_str_val.size > 1
+              through_singular = through_str_val[0..-2]
+            else
+              through_singular = through_str_val
+            end
+            through_class_type = through_singular.camelcase.id
+          %}
 
-          through_class_name = {{through_class_name}}
+          through_class_name = {{through_class_type}}
           intermediate_table = through_class_name.table_name
 
           # Determine foreign keys for the relationship
@@ -552,14 +570,20 @@ module Takarik::Data
           {% class_type = class_name.id %}
         {% end %}
       {% else %}
-        # Convert plural association name to singular class name (e.g., "students" -> "Student")
-        {% singular_name = name.id.stringify %}
-        {% if singular_name.ends_with?("ies") %}
-          {% singular_name = singular_name.gsub(/ies$/, "y") %}
-        {% elsif singular_name.ends_with?("s") %}
-          {% singular_name = singular_name.gsub(/s$/, "") %}
-        {% end %}
-        {% class_type = singular_name.camelcase.id %}
+        # Convert plural association name to singular class name using inline singularization
+        {%
+          name_str = name.id.stringify
+          if name_str.ends_with?("ies") && name_str.size > 3
+            singular_name = name_str[0..-4] + "y"
+          elsif name_str.ends_with?("ves") && name_str.size > 3
+            singular_name = name_str[0..-4] + "f"
+          elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+            singular_name = name_str[0..-2]
+          else
+            singular_name = name_str
+          end
+          class_type = singular_name.camelcase.id
+        %}
       {% end %}
 
       # Determine join table name
@@ -570,14 +594,42 @@ module Takarik::Data
           {% join_table_str = join_table %}
         {% end %}
       {% else %}
-        # Generate join table name from model names in alphabetical order
-        {% current_table = @type.name.split("::").last.underscore + "s" %}
-        {% target_table = class_type.stringify.underscore + "s" %}
-        {% if current_table < target_table %}
-          {% join_table_str = current_table + "_" + target_table %}
-        {% else %}
-          {% join_table_str = target_table + "_" + current_table %}
-        {% end %}
+        # Generate join table name from model names in alphabetical order using inline pluralization
+        {%
+          # Pluralize current class name
+          current_class_name = @type.name.split("::").last.underscore
+          if current_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| current_class_name.ends_with?(ending) }
+            current_table = current_class_name[0..-2] + "ies"
+          elsif current_class_name.ends_with?("s") || current_class_name.ends_with?("sh") || current_class_name.ends_with?("ch") || current_class_name.ends_with?("x") || current_class_name.ends_with?("z")
+            current_table = current_class_name + "es"
+          elsif current_class_name.ends_with?("f")
+            current_table = current_class_name[0..-2] + "ves"
+          elsif current_class_name.ends_with?("fe")
+            current_table = current_class_name[0..-3] + "ves"
+          else
+            current_table = current_class_name + "s"
+          end
+
+          # Pluralize target class name
+          target_class_name = class_type.stringify.underscore
+          if target_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| target_class_name.ends_with?(ending) }
+            target_table = target_class_name[0..-2] + "ies"
+          elsif target_class_name.ends_with?("s") || target_class_name.ends_with?("sh") || target_class_name.ends_with?("ch") || target_class_name.ends_with?("x") || target_class_name.ends_with?("z")
+            target_table = target_class_name + "es"
+          elsif target_class_name.ends_with?("f")
+            target_table = target_class_name[0..-2] + "ves"
+          elsif target_class_name.ends_with?("fe")
+            target_table = target_class_name[0..-3] + "ves"
+          else
+            target_table = target_class_name + "s"
+          end
+
+          if current_table < target_table
+            join_table_str = current_table + "_" + target_table
+          else
+            join_table_str = target_table + "_" + current_table
+          end
+        %}
       {% end %}
 
       # Determine foreign keys
@@ -630,7 +682,18 @@ module Takarik::Data
       end
 
       # Define method to add a single association
-      {% singular_name = name.id.stringify.gsub(/s$/, "") %}
+      {%
+        name_str = name.id.stringify
+        if name_str.ends_with?("ies") && name_str.size > 3
+          singular_name = name_str[0..-4] + "y"
+        elsif name_str.ends_with?("ves") && name_str.size > 3
+          singular_name = name_str[0..-4] + "f"
+        elsif name_str.ends_with?("s") && !name_str.ends_with?("ss") && name_str.size > 1
+          singular_name = name_str[0..-2]
+        else
+          singular_name = name_str
+        end
+      %}
       def add_{{singular_name.id}}(record : {{class_type}})
         primary_key_value = get_attribute("id")
         target_key_value = record.get_attribute("id")
