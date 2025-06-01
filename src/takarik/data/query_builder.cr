@@ -1009,6 +1009,7 @@ module Takarik::Data
 
     generate_where_overloads
 
+    # Runtime method_missing for dynamic scope delegation
     macro method_missing(call)
       {% array_methods = %w[
            size all? none?
@@ -1028,8 +1029,48 @@ module Takarik::Data
       {% if array_methods.includes?(method_name) %}
         to_a.{{call}}
       {% else %}
-        super
+        # Try to delegate to model class scope
+        {% if call.args.size > 0 %}
+          scope_result = @model_class.{{call.name.id}}({{call.args.splat}})
+        {% else %}
+          scope_result = @model_class.{{call.name.id}}
+        {% end %}
+
+        # If the scope returns a QueryBuilder, merge it with this one
+        if scope_result.is_a?(Takarik::Data::QueryBuilder)
+          merge_with_scope(scope_result)
+        else
+          # If scope doesn't return QueryBuilder (e.g., conditional scope returns all),
+          # just return self to maintain chainability
+          self
+        end
       {% end %}
+    end
+
+    # ========================================
+    # SCOPE CHAINING METHODS
+    # ========================================
+
+    # Helper method to merge another QueryBuilder's state into this one
+    private def merge_with_scope(other_query : Takarik::Data::QueryBuilder)
+      # Merge where conditions and parameters
+      @where_conditions.concat(other_query.@where_conditions)
+      @where_params.concat(other_query.@where_params)
+
+      # Merge order clauses
+      @order_clauses.concat(other_query.@order_clauses)
+
+      # Merge other query state
+      @group_clause = other_query.@group_clause if other_query.@group_clause
+      @having_clause = other_query.@having_clause if other_query.@having_clause
+      @having_params.concat(other_query.@having_params)
+      @limit_value = other_query.@limit_value if other_query.@limit_value
+      @offset_value = other_query.@offset_value if other_query.@offset_value
+
+      # Note: We don't merge select_clause, joins, or distinct to avoid conflicts
+      # Those are typically set at the beginning of a query chain
+
+      self
     end
   end
 end

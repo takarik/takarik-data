@@ -1065,7 +1065,7 @@ module Takarik::Data
     # Enhanced scope macro supporting arguments and conditionals like ActiveRecord
     macro scope(name, &block)
       {% if block.args.size > 0 %}
-        # Scope with arguments
+        # Scope with arguments - define on model class
         def self.{{name.id}}({{block.args.splat}})
           # Execute the scope body and ensure we always return a QueryBuilder
           result = {{block.body}}
@@ -1078,7 +1078,7 @@ module Takarik::Data
           end
         end
       {% else %}
-        # Scope without arguments
+        # Scope without arguments - define on model class
         def self.{{name.id}}
           # Execute the scope body and ensure we always return a QueryBuilder
           result = {{block.body}}
