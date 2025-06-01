@@ -1062,10 +1062,35 @@ module Takarik::Data
       end
     end
 
+    # Enhanced scope macro supporting arguments and conditionals like ActiveRecord
     macro scope(name, &block)
-      def self.{{name.id}}
-        {{block.body}}
-      end
+      {% if block.args.size > 0 %}
+        # Scope with arguments
+        def self.{{name.id}}({{block.args.splat}})
+          # Execute the scope body and ensure we always return a QueryBuilder
+          result = {{block.body}}
+
+          # If result is nil or false (from conditional), return all to ensure chainability
+          if result.nil? || result == false
+            all
+          else
+            result
+          end
+        end
+      {% else %}
+        # Scope without arguments
+        def self.{{name.id}}
+          # Execute the scope body and ensure we always return a QueryBuilder
+          result = {{block.body}}
+
+          # If result is nil or false (from conditional), return all to ensure chainability
+          if result.nil? || result == false
+            all
+          else
+            result
+          end
+        end
+      {% end %}
     end
 
     # Default scope macro for setting model-wide default conditions
