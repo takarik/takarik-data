@@ -1093,6 +1093,88 @@ module Takarik::Data
       {% end %}
     end
 
+    # Enumerate macro for creating enumerated attributes with automatic scopes and methods
+    macro enumerate(name, values)
+      {% name_str = name.id.stringify %}
+
+      # Store the enum values mapping for runtime use
+      \{% unless @type.class_vars.map(&.name.stringify).includes?("enum_mappings") %}
+        @@enum_mappings = {} of String => Hash(String, Int32)
+      \{% end %}
+
+      @@enum_mappings[{{name_str}}] = {} of String => Int32
+
+      {% for value, index in values %}
+        @@enum_mappings[{{name_str}}][{{value.id.stringify}}] = {{index}}
+      {% end %}
+
+      # Define the property with enum constraint
+      define_property_with_accessors({{name.id}}, Int32)
+
+      # Create class method to get enum mappings
+      def self.{{name.id}}_mappings
+        @@enum_mappings[{{name_str}}]
+      end
+
+      # Create scopes for each enum value
+      {% for value, index in values %}
+        # Positive scopes (e.g., Order.shipped)
+        scope :{{value.id}} do
+          where({{name.id}}: {{index}})
+        end
+
+        # Negative scopes (e.g., Order.not_shipped)
+        scope :not_{{value.id}} do
+          not({{name.id}}: {{index}})
+        end
+      {% end %}
+
+      # Create instance query methods (e.g., order.shipped?)
+      {% for value, index in values %}
+        def {{value.id}}?
+          {{name.id}} == {{index}}
+        end
+      {% end %}
+
+      # Create instance setter methods with save (e.g., order.shipped!)
+      {% for value, index in values %}
+        def {{value.id}}!
+          self.{{name.id}} = {{index}}
+          save!
+          {{value.id}}?
+        end
+      {% end %}
+
+      # Create a method to get the string representation of the current enum value
+      def {{name.id}}_name
+        case {{name.id}}
+        {% for value, index in values %}
+        when {{index}}
+          {{value.id.stringify}}
+        {% end %}
+        else
+          nil
+        end
+      end
+
+      # Create a method to set enum value by string name
+      def {{name.id}}_name=(value_name : String)
+        case value_name
+        {% for value, index in values %}
+        when {{value.id.stringify}}
+          self.{{name.id}} = {{index}}
+        {% end %}
+        else
+          raise "Invalid {{name.id}} value: #{value_name}. Valid values are: #{self.class.{{name.id}}_mappings.keys.join(", ")}"
+        end
+      end
+
+      # Create a class method to get all enum values
+      def self.{{name.id}}_values
+        [{% for value in values %}{{value.id.stringify}}, {% end %}]
+      end
+    end
+
     # Default scope macro for setting model-wide default conditions
     macro default_scope(&block)
       # Override the apply_default_scope_if_exists method
