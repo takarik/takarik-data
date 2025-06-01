@@ -128,11 +128,11 @@ module Takarik::Data
       all.offset(count)
     end
 
-    def self.joins(table : String, on : String)
+    def self.join(table : String, on : String)
       all.join(table, on)
     end
 
-    def self.joins(association_name : String | Symbol)
+    def self.join(association_name : String | Symbol)
       all.join(association_name)
     end
 
