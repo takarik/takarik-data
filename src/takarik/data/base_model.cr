@@ -162,12 +162,32 @@ module Takarik::Data
       all.select(columns)
     end
 
+    def self.order(column : Symbol)
+      all.order(column)
+    end
+
     def self.order(column : String, direction : String = "ASC")
       all.order(column, direction)
     end
 
     def self.order(**columns)
       all.order(**columns)
+    end
+
+    def self.order(order_hash : Hash(Symbol | String, Hash(Symbol | String, Symbol | String) | Symbol | String))
+      all.order(order_hash)
+    end
+
+    def self.order(*columns : String)
+      all.order(*columns)
+    end
+
+    def self.order(first_column : Symbol, **additional_columns)
+      all.order(first_column, **additional_columns)
+    end
+
+    def self.order(columns : Array(String))
+      all.order(columns)
     end
 
     def self.limit(count : Int32)

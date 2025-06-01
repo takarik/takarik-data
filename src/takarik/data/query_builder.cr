@@ -315,20 +315,96 @@ module Takarik::Data
     # ORDER METHODS
     # ========================================
 
-    def order(column : String, direction : String = "ASC")
-      @order_clauses << "#{column} #{direction.upcase}"
+    # Order with symbol column (single column, defaults to ASC)
+    def order(column : Symbol)
+      @order_clauses << "#{column} ASC"
       self
     end
 
+    # Order with string column and optional direction
+    def order(column : String, direction : String = "ASC")
+      # Handle case where direction is already included in column string
+      if column.includes?(" ")
+        @order_clauses << column
+      elsif column.includes?(",")
+        # Handle multiple columns in one string like "title ASC, created_at DESC"
+        column.split(",").each do |part|
+          @order_clauses << part.strip
+        end
+      else
+        @order_clauses << "#{column} #{direction.upcase}"
+      end
+      self
+    end
+
+    # Order with hash of columns and directions (named parameters)
     def order(**columns)
       columns.each do |column, direction|
-        order(column.to_s, direction.to_s)
+        direction_str = case direction
+                       when Symbol
+                         direction.to_s.upcase
+                       when String
+                         direction.upcase
+                       else
+                         direction.to_s.upcase
+                       end
+        @order_clauses << "#{column} #{direction_str}"
+      end
+      self
+    end
+
+    # Order with hash parameter (for nested table ordering like books: { print_year: :desc })
+    def order(order_hash : Hash(Symbol | String, Hash(Symbol | String, Symbol | String) | Symbol | String))
+      order_hash.each do |table_or_column, column_or_direction|
+        case column_or_direction
+        when Hash
+          # Handle nested hash like books: { print_year: :desc }
+          table_name = table_or_column.to_s
+          column_or_direction.each do |column, direction|
+            direction_str = direction.to_s.upcase
+            @order_clauses << "#{table_name}.#{column} #{direction_str}"
+          end
+        when Symbol, String
+          # Handle simple hash like created_at: :desc
+          direction_str = column_or_direction.to_s.upcase
+          @order_clauses << "#{table_or_column} #{direction_str}"
+        end
+      end
+      self
+    end
+
+    # Order with mixed arguments (symbol + hash) - special case
+    def order(first_column : Symbol, **additional_columns)
+      # Add the first symbol column
+      @order_clauses << "#{first_column} ASC"
+
+      # Add the hash columns
+      additional_columns.each do |column, direction|
+        direction_str = direction.to_s.upcase
+        @order_clauses << "#{column} #{direction_str}"
       end
       self
     end
 
     def order_by(column : String, direction : String = "ASC")
       order(column, direction)
+    end
+
+    # Order with array of strings (for multiple string arguments)
+    def order(columns : Array(String))
+      columns.each do |column|
+        if column.includes?(",")
+          # Handle multiple columns in one string like "title ASC, created_at DESC"
+          column.split(",").each do |part|
+            @order_clauses << part.strip
+          end
+        elsif column.includes?(" ")
+          @order_clauses << column
+        else
+          @order_clauses << "#{column} ASC"
+        end
+      end
+      self
     end
 
     # ========================================
