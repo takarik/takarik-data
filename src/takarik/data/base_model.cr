@@ -72,8 +72,17 @@ module Takarik::Data
     # CLASS METHODS - QUERY BUILDING
     # ========================================
 
-    def self.all
+    def self.unscoped
       QueryBuilder(self).new(self)
+    end
+
+    def self.all
+      apply_default_scope_if_exists
+    end
+
+    # Default method that does nothing - can be overridden by default_scope macro
+    def self.apply_default_scope_if_exists
+      unscoped
     end
 
     def self.where(conditions : Hash(String, DB::Any))
@@ -533,7 +542,6 @@ module Takarik::Data
         @_last_action = :destroy
         execute_commit_callbacks(:destroy)
         true
-
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :destroy
@@ -647,7 +655,6 @@ module Takarik::Data
         @_last_action = :create
         execute_commit_callbacks(:create)
         true
-
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :create
@@ -702,7 +709,6 @@ module Takarik::Data
         @_last_action = :update
         execute_commit_callbacks(:update)
         true
-
       rescue ex
         # Transaction was rolled back due to exception - run after_rollback callbacks
         @_last_action = :update
@@ -1059,6 +1065,14 @@ module Takarik::Data
     macro scope(name, &block)
       def self.{{name.id}}
         {{block.body}}
+      end
+    end
+
+    # Default scope macro for setting model-wide default conditions
+    macro default_scope(&block)
+      # Override the apply_default_scope_if_exists method
+      def self.apply_default_scope_if_exists
+        unscoped.{{block.body}}
       end
     end
 
