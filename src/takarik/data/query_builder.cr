@@ -744,6 +744,74 @@ module Takarik::Data
       records.size
     end
 
+    # Memory-efficient method to iterate over records in batches
+    def find_each(batch_size : Int32 = 1000, &block : T ->)
+      raise ArgumentError.new("Batch size must be positive") if batch_size <= 0
+
+      offset_value = 0
+
+      loop do
+        # Store original limit and offset
+        original_limit = @limit_value
+        original_offset = @offset_value
+
+        # Set batch limit and offset
+        @limit_value = batch_size
+        @offset_value = offset_value
+
+        batch_records = to_a
+
+        # Restore original limit and offset
+        @limit_value = original_limit
+        @offset_value = original_offset
+
+        break if batch_records.empty?
+
+        batch_records.each(&block)
+
+        # Break if we got fewer records than the batch size (last batch)
+        break if batch_records.size < batch_size
+
+        offset_value += batch_size
+      end
+
+      self
+    end
+
+    # Memory-efficient method to iterate over records in batches, yielding batches
+    def find_in_batches(batch_size : Int32 = 1000, &block : Array(T) ->)
+      raise ArgumentError.new("Batch size must be positive") if batch_size <= 0
+
+      offset_value = 0
+
+      loop do
+        # Store original limit and offset
+        original_limit = @limit_value
+        original_offset = @offset_value
+
+        # Set batch limit and offset
+        @limit_value = batch_size
+        @offset_value = offset_value
+
+        batch_records = to_a
+
+        # Restore original limit and offset
+        @limit_value = original_limit
+        @offset_value = original_offset
+
+        break if batch_records.empty?
+
+        yield batch_records
+
+        # Break if we got fewer records than the batch size (last batch)
+        break if batch_records.size < batch_size
+
+        offset_value += batch_size
+      end
+
+      self
+    end
+
     # ========================================
     # ENUMERABLE-LIKE METHODS
     # ========================================

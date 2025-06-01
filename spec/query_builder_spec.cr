@@ -1572,4 +1572,281 @@ describe Takarik::Data::QueryBuilder do
       end
     end
   end
+
+  describe "batch processing methods" do
+    before_each do
+      # Clean up and create a larger dataset for batch testing
+      User.all.delete_all
+
+      # Create 10 users for batch testing
+      10.times do |i|
+        User.create(
+          name: "User#{i + 1}",
+          email: "user#{i + 1}@example.com",
+          age: 20 + i,
+          active: i.even?
+        )
+      end
+    end
+
+    describe "find_each" do
+      it "iterates through all records with default batch size" do
+        visited_users = [] of String
+        User.all.find_each do |user|
+          visited_users << user.name.not_nil!
+        end
+
+        visited_users.size.should eq(10)
+        visited_users.should contain("User1")
+        visited_users.should contain("User10")
+      end
+
+      it "respects custom batch size" do
+        batch_calls = 0
+        User.all.find_each(3) do |user|
+          batch_calls += 1
+        end
+
+        batch_calls.should eq(10) # All users should be visited
+      end
+
+      it "works with where conditions" do
+        visited_users = [] of String
+        User.where(active: true).find_each do |user|
+          visited_users << user.name.not_nil!
+        end
+
+        # Should only include even-indexed users (User1, User3, User5, User7, User9)
+        visited_users.size.should eq(5)
+        visited_users.should contain("User1")
+        visited_users.should contain("User9")
+        visited_users.should_not contain("User2")
+      end
+
+      it "works with order conditions" do
+        visited_ages = [] of Int32
+        User.order("age DESC").find_each(3) do |user|
+          visited_ages << user.age.not_nil!
+        end
+
+        # Should visit users in descending age order
+        visited_ages.first.should eq(29) # User10
+        visited_ages.last.should eq(20)  # User1
+        visited_ages.should eq(visited_ages.sort.reverse)
+      end
+
+      it "handles empty result sets" do
+        visited_count = 0
+        User.where(name: "NonExistent").find_each do |user|
+          visited_count += 1
+        end
+
+        visited_count.should eq(0)
+      end
+
+      it "preserves original query state" do
+        query = User.where(active: true).limit(3).offset(1)
+        original_sql = query.to_sql
+
+        visited_count = 0
+        query.find_each(2) do |user|
+          visited_count += 1
+        end
+
+        # Original query should remain unchanged
+        query.to_sql.should eq(original_sql)
+        visited_count.should eq(5) # All active users, ignoring original limit/offset
+      end
+
+      it "works with small batch sizes" do
+        visited_users = [] of String
+        User.all.find_each(1) do |user|
+          visited_users << user.name.not_nil!
+        end
+
+        visited_users.size.should eq(10)
+      end
+
+      it "works when total records less than batch size" do
+        visited_count = 0
+        User.where(age: 25).find_each(100) do |user|
+          visited_count += 1
+        end
+
+        visited_count.should eq(1) # Only User6 has age 25
+      end
+
+      it "returns self for chaining" do
+        result = User.all.find_each { |user| }
+        result.should be_a(Takarik::Data::QueryBuilder(User))
+      end
+    end
+
+    describe "find_in_batches" do
+      it "yields batches of records with default batch size" do
+        batch_count = 0
+        total_records = 0
+
+        User.all.find_in_batches do |batch|
+          batch_count += 1
+          total_records += batch.size
+          batch.should be_a(Array(User))
+        end
+
+        # With 10 records and default batch size 1000, should be 1 batch
+        batch_count.should eq(1)
+        total_records.should eq(10)
+      end
+
+      it "yields multiple batches with small batch size" do
+        batch_count = 0
+        batch_sizes = [] of Int32
+
+        User.all.find_in_batches(3) do |batch|
+          batch_count += 1
+          batch_sizes << batch.size
+        end
+
+        # With 10 records and batch size 3: batches of 3, 3, 3, 1
+        batch_count.should eq(4)
+        batch_sizes.should eq([3, 3, 3, 1])
+      end
+
+      it "works with where conditions" do
+        batch_count = 0
+        total_records = 0
+
+        User.where(active: true).find_in_batches(2) do |batch|
+          batch_count += 1
+          total_records += batch.size
+          # All users in batch should be active
+          batch.all?(&.active).should be_true
+        end
+
+        # 5 active users with batch size 2: batches of 2, 2, 1
+        batch_count.should eq(3)
+        total_records.should eq(5)
+      end
+
+      it "handles empty result sets" do
+        batch_count = 0
+
+        User.where(name: "NonExistent").find_in_batches do |batch|
+          batch_count += 1
+        end
+
+        batch_count.should eq(0)
+      end
+
+      it "preserves original query state" do
+        query = User.where(active: true).limit(2).offset(1)
+        original_sql = query.to_sql
+
+        batch_count = 0
+        query.find_in_batches(3) do |batch|
+          batch_count += 1
+        end
+
+        # Original query should remain unchanged
+        query.to_sql.should eq(original_sql)
+        batch_count.should eq(2) # All 5 active users in 2 batches (3 + 2)
+      end
+
+      it "works with order conditions" do
+        ages_in_order = [] of Int32
+
+        User.order("age ASC").find_in_batches(4) do |batch|
+          batch.each do |user|
+            ages_in_order << user.age.not_nil!
+          end
+        end
+
+        # Should maintain age order across batches
+        ages_in_order.should eq(ages_in_order.sort)
+        ages_in_order.first.should eq(20) # User1
+        ages_in_order.last.should eq(29)  # User10
+      end
+
+      it "works when total records less than batch size" do
+        batch_count = 0
+        record_count = 0
+
+        User.where(age: 25).find_in_batches(100) do |batch|
+          batch_count += 1
+          record_count += batch.size
+        end
+
+        batch_count.should eq(1)
+        record_count.should eq(1)
+      end
+
+      it "returns self for chaining" do
+        result = User.all.find_in_batches { |batch| }
+        result.should be_a(Takarik::Data::QueryBuilder(User))
+      end
+
+      it "provides access to batch index information" do
+        batch_indices = [] of Int32
+
+        User.all.find_in_batches(3) do |batch|
+          batch_indices << batch.first.id.not_nil!
+        end
+
+        # First record ID of each batch should be different
+        batch_indices.uniq.size.should eq(batch_indices.size)
+      end
+    end
+
+    describe "edge cases" do
+      it "find_each works with complex queries" do
+        visited_count = 0
+
+        User.where(active: true)
+            .where("age > ?", 22)
+            .order("name ASC")
+            .find_each(2) do |user|
+          visited_count += 1
+          user.active.should be_true
+          user.age.not_nil!.should be > 22
+        end
+
+        visited_count.should be > 0
+      end
+
+      it "find_in_batches works with complex queries" do
+        batch_count = 0
+
+        User.where(active: true)
+            .where("age > ?", 22)
+            .order("name ASC")
+            .find_in_batches(2) do |batch|
+          batch_count += 1
+          batch.all?(&.active).should be_true
+          batch.all? { |u| u.age.not_nil! > 22 }.should be_true
+        end
+
+        batch_count.should be > 0
+      end
+
+      it "handles zero batch size gracefully" do
+        expect_raises(Exception) do
+          User.all.find_each(0) { |user| }
+        end
+
+        expect_raises(Exception) do
+          User.all.find_in_batches(0) { |batch| }
+        end
+      end
+
+      it "handles negative batch size gracefully" do
+        expect_raises(Exception) do
+          User.all.find_each(-5) { |user| }
+        end
+
+        expect_raises(Exception) do
+          User.all.find_in_batches(-5) { |batch| }
+        end
+      end
+    end
+  end
 end
