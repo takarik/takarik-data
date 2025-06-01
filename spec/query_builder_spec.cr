@@ -37,9 +37,14 @@ describe Takarik::Data::QueryBuilder do
       results.map(&.name).should contain("Charlie")
     end
 
-    it "builds where_not queries" do
-      query = User.where_not(active: false)
+    it "builds not queries" do
+      query = User.not(active: false)
       query.to_sql.should contain("WHERE active != ?")
+    end
+
+    it "builds IS NOT NULL queries" do
+      query = User.not(email: nil)
+      query.to_sql.should contain("WHERE email IS NOT NULL")
     end
 
     it "builds IN queries" do
@@ -48,7 +53,7 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "builds NOT IN queries" do
-      query = User.where_not("age", [25])
+      query = User.not("age", [25])
       query.to_sql.should contain("WHERE age NOT IN (?)")
     end
 
@@ -69,8 +74,8 @@ describe Takarik::Data::QueryBuilder do
       query = User.where("score", [85.5, 92.3])
       query.to_sql.should contain("WHERE score IN (?, ?)")
 
-      # NOT IN with different types
-      query = User.where_not("name", ["Charlie"])
+      # NOT IN with new syntax
+      query = User.not("name", ["Charlie"])
       query.to_sql.should contain("WHERE name NOT IN (?)")
     end
 
@@ -106,17 +111,6 @@ describe Takarik::Data::QueryBuilder do
       end_time = Time.utc(2023, 12, 31)
       query = User.where("created_at", start_time..end_time)
       query.to_sql.should contain("WHERE created_at BETWEEN ? AND ?")
-    end
-
-    it "builds IS NULL queries" do
-      # Test with nil value
-      query = User.where("email", nil)
-      query.to_sql.should contain("WHERE email IS NULL")
-    end
-
-    it "builds IS NOT NULL queries" do
-      query = User.where_not(email: nil)
-      query.to_sql.should contain("WHERE email IS NOT NULL")
     end
 
     it "builds comparison queries" do
@@ -241,6 +235,12 @@ describe Takarik::Data::QueryBuilder do
       query.size.should eq(4) # All users
       names = query.map(&.name).compact.sort
       names.should eq(["Alice", "Bob", "Charlie", "Diana"])
+    end
+
+    it "builds IS NULL queries" do
+      # Test with nil value
+      query = User.where("email", nil)
+      query.to_sql.should contain("WHERE email IS NULL")
     end
   end
 
@@ -1013,7 +1013,7 @@ describe Takarik::Data::QueryBuilder do
   describe "smart joins based on association configuration" do
     it "automatically uses INNER JOIN for required belongs_to associations" do
       # Task belongs_to :project (required, optional: false by default)
-      query = Task.joins("project")
+      query = Task.join("project")
       sql = query.to_sql
 
       # Should use INNER JOIN because project is required
@@ -1023,7 +1023,7 @@ describe Takarik::Data::QueryBuilder do
 
     it "automatically uses LEFT JOIN for optional belongs_to associations" do
       # Task belongs_to :assignee, optional: true
-      query = Task.joins("assignee")
+      query = Task.join("assignee")
       sql = query.to_sql
 
       # Should use LEFT JOIN because assignee is optional
@@ -1033,12 +1033,12 @@ describe Takarik::Data::QueryBuilder do
 
     it "supports both string and symbol association names" do
       # Test with string
-      string_query = Task.joins("project")
+      string_query = Task.join("project")
       string_sql = string_query.to_sql
       string_sql.should contain("INNER JOIN projects")
 
       # Test with symbol
-      symbol_query = Task.joins(:project)
+      symbol_query = Task.join(:project)
       symbol_sql = symbol_query.to_sql
       symbol_sql.should contain("INNER JOIN projects")
 
@@ -1063,13 +1063,13 @@ describe Takarik::Data::QueryBuilder do
       class_left.to_sql.should contain("LEFT JOIN users_optional")
 
       # Test smart joins method with symbol
-      smart_symbol = Task.joins(:assignee)
+      smart_symbol = Task.join(:assignee)
       smart_symbol.to_sql.should contain("LEFT JOIN users_optional")
     end
 
     it "automatically uses LEFT JOIN for has_many associations" do
       # Project has_many :tasks
-      query = Project.joins("tasks")
+      query = Project.join("tasks")
       sql = query.to_sql
 
       # Should use LEFT JOIN because a project might not have tasks
@@ -1108,12 +1108,12 @@ describe Takarik::Data::QueryBuilder do
 
       # Smart join on required association (project) - uses INNER JOIN
       # Should only return tasks that have projects (both tasks)
-      tasks_with_projects = Task.joins("project").to_a
+      tasks_with_projects = Task.join("project").to_a
       tasks_with_projects.size.should eq(2)
 
       # Smart join on optional association (assignee) - uses LEFT JOIN
       # Should return all tasks, even those without assignees
-      all_tasks_query = Task.joins("assignee")
+      all_tasks_query = Task.join("assignee")
       all_tasks_sql = all_tasks_query.to_sql
       all_tasks_sql.should contain("LEFT JOIN")
 
@@ -1125,6 +1125,218 @@ describe Takarik::Data::QueryBuilder do
       # Should only return tasks that have assignees
       only_assigned_tasks = Task.inner_join("assignee").to_a
       only_assigned_tasks.size.should eq(1) # Only the assigned task
+    end
+  end
+
+  describe "association existence queries" do
+    before_each do
+      # Create users with unique emails to avoid test interference
+      alice = User.create(name: "Alice", email: "alice_assoc_test@example.com", age: 25, active: true)
+      bob = User.create(name: "Bob", email: "bob_assoc_test@example.com", age: 30, active: true)
+      charlie = User.create(name: "Charlie", email: "charlie_assoc_test@example.com", age: 35, active: false)
+
+      # Create posts (Alice and Bob have posts, Charlie doesn't)
+      Post.create(title: "Alice's Assoc Post", content: "Content", user_id: alice.id, published: true)
+      Post.create(title: "Bob's Assoc Post", content: "Content", user_id: bob.id, published: true)
+    end
+
+    describe "associated method" do
+      it "finds records that have associated records" do
+        query = User.where("email LIKE", "%_assoc_test@%").associated(:posts)
+        sql = query.to_sql
+
+        # Should generate INNER JOIN and IS NOT NULL condition
+        sql.should contain("INNER JOIN posts")
+        sql.should contain("posts.id IS NOT NULL")
+
+        results = query.to_a
+        results.size.should eq(2)
+
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "finds records that have associated records using where.associated" do
+        query = User.where("email LIKE", "%_assoc_test@%").associated(:posts)
+        sql = query.to_sql
+
+        # Should generate INNER JOIN and IS NOT NULL condition
+        sql.should contain("INNER JOIN posts")
+        sql.should contain("posts.id IS NOT NULL")
+
+        results = query.to_a
+        results.size.should eq(2)
+
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "works with chained where conditions" do
+        query = User.where("email LIKE", "%_assoc_test@%").where(active: true).associated(:posts)
+        results = query.to_a
+
+        # Should find Alice and Bob (both active and have posts)
+        results.size.should eq(2)
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "works with chained where conditions using where.associated" do
+        query = User.where("email LIKE", "%_assoc_test@%").where(active: true).associated(:posts)
+        results = query.to_a
+
+        # Should find Alice and Bob (both active and have posts)
+        results.size.should eq(2)
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "returns empty when no records have associations" do
+        # Delete all posts for our test users
+        Post.where("title LIKE", "%_Assoc Post").delete_all
+
+        query = User.where("email LIKE", "%_assoc_test@%").associated(:posts)
+        results = query.to_a
+        results.size.should eq(0)
+      end
+
+      it "works with belongs_to associations" do
+        # Test from the Post side
+        query = Post.where("title LIKE", "%_Assoc Post").associated(:user)
+        results = query.to_a
+
+        # All posts should have users
+        results.size.should eq(2)
+        post_titles = results.map(&.title).compact.sort
+        post_titles.should eq(["Alice's Assoc Post", "Bob's Assoc Post"])
+      end
+    end
+
+    describe "missing method" do
+      it "finds records that don't have associated records" do
+        query = User.where("email LIKE", "%_assoc_test@%").missing(:posts)
+        sql = query.to_sql
+
+        # Should generate LEFT OUTER JOIN and IS NULL condition
+        sql.should contain("LEFT OUTER JOIN posts")
+        sql.should contain("posts.id IS NULL")
+
+        results = query.to_a
+        results.size.should eq(1)
+
+        user_names = results.map(&.name).compact
+        user_names.should eq(["Charlie"])
+      end
+
+      it "finds records that don't have associated records using where.missing" do
+        query = User.where("email LIKE", "%_assoc_test@%").missing(:posts)
+        sql = query.to_sql
+
+        # Should generate LEFT OUTER JOIN and IS NULL condition
+        sql.should contain("LEFT OUTER JOIN posts")
+        sql.should contain("posts.id IS NULL")
+
+        results = query.to_a
+        results.size.should eq(1)
+
+        user_names = results.map(&.name).compact
+        user_names.should eq(["Charlie"])
+      end
+
+      it "works with chained where conditions" do
+        query = User.where("email LIKE", "%_assoc_test@%").where(active: false).missing(:posts)
+        results = query.to_a
+
+        # Should find Charlie (inactive and no posts)
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
+
+      it "works with chained where conditions using where.missing" do
+        query = User.where("email LIKE", "%_assoc_test@%").where(active: false).missing(:posts)
+        results = query.to_a
+
+        # Should find Charlie (inactive and no posts)
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
+
+      it "returns all records when all are missing associations" do
+        # Delete all posts for our test users
+        Post.where("title LIKE", "%_Assoc Post").delete_all
+
+        query = User.where("email LIKE", "%_assoc_test@%").missing(:posts)
+        results = query.to_a
+
+        # All users should be missing posts now
+        results.size.should eq(3)
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob", "Charlie"])
+      end
+
+      it "returns empty when all records have associations" do
+        # Get Charlie's record
+        charlie = User.where("email LIKE", "charlie_assoc_test@%").first!
+
+        # Create a post for Charlie too
+        Post.create(title: "Charlie's Assoc Post", content: "Content", user_id: charlie.id, published: true)
+
+        query = User.where("email LIKE", "%_assoc_test@%").missing(:posts)
+        results = query.to_a
+        results.size.should eq(0)
+      end
+    end
+
+    describe "error handling" do
+      it "raises error for non-existent association" do
+        expect_raises(Exception, /Association 'nonexistent' not found/) do
+          User.where("email LIKE", "%_assoc_test@%").associated(:nonexistent)
+        end
+
+        expect_raises(Exception, /Association 'nonexistent' not found/) do
+          User.where("email LIKE", "%_assoc_test@%").missing(:nonexistent)
+        end
+      end
+    end
+
+    describe "class method shortcuts" do
+      it "provides associated class method" do
+        results = User.where("email LIKE", "%_assoc_test@%").associated(:posts).to_a
+        results.size.should eq(2)
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "provides where.associated class method" do
+        results = User.where("email LIKE", "%_assoc_test@%").associated(:posts).to_a
+        results.size.should eq(2)
+        user_names = results.map(&.name).compact.sort
+        user_names.should eq(["Alice", "Bob"])
+      end
+
+      it "provides missing class method" do
+        results = User.where("email LIKE", "%_assoc_test@%").missing(:posts).to_a
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
+
+      it "provides where.missing class method" do
+        results = User.where("email LIKE", "%_assoc_test@%").missing(:posts).to_a
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
+
+      it "chains with other query methods" do
+        results = User.where("email LIKE", "%_assoc_test@%").missing(:posts).where(active: false).to_a
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
+
+      it "chains with other query methods using where.missing" do
+        results = User.where("email LIKE", "%_assoc_test@%").missing(:posts).where(active: false).to_a
+        results.size.should eq(1)
+        results.first.name.should eq("Charlie")
+      end
     end
   end
 end

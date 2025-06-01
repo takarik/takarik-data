@@ -86,7 +86,11 @@ module Takarik::Data
       self
     end
 
-    def where_not(conditions : Hash(String, DB::Any))
+    # ========================================
+    # NOT METHODS (new clean syntax)
+    # ========================================
+
+    def not(conditions : Hash(String, DB::Any))
       conditions.each do |column, value|
         if value.nil?
           @where_conditions << "#{column} IS NOT NULL"
@@ -102,14 +106,82 @@ module Takarik::Data
       self
     end
 
-    def where_not(**conditions)
-      where_not(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+    def not(**conditions)
+      not(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
     end
 
-    def where_not(column : String, values : Array(DB::Any))
+    def not(column : String, values : Array(DB::Any))
       placeholders = (["?"] * values.size).join(", ")
       @where_conditions << "#{column} NOT IN (#{placeholders})"
       @where_params.concat(values)
+      self
+    end
+
+    # ========================================
+    # ASSOCIATION EXISTENCE METHODS
+    # ========================================
+
+    def associated(association_name : String | Symbol)
+      association_name_str = association_name.to_s
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name_str }
+
+      unless association
+        raise "Association '#{association_name_str}' not found for #{@model_class.name}"
+      end
+
+      # Skip polymorphic associations as they can't be joined directly
+      if association.polymorphic || association.class_type.nil?
+        raise "Cannot use associated with polymorphic association '#{association_name_str}'"
+      end
+
+      current_table = @model_class.table_name
+      associated_table = association.class_type.not_nil!.table_name
+
+      case association.type
+      when .belongs_to?
+        on_condition = "#{current_table}.#{association.foreign_key} = #{associated_table}.#{association.primary_key}"
+      when .has_many?, .has_one?
+        on_condition = "#{current_table}.#{association.primary_key} = #{associated_table}.#{association.foreign_key}"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+
+      @joins << "INNER JOIN #{associated_table} ON #{on_condition}"
+      @where_conditions << "#{associated_table}.#{association.primary_key} IS NOT NULL"
+      @has_joins = true
+      self
+    end
+
+    def missing(association_name : String | Symbol)
+      association_name_str = association_name.to_s
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name_str }
+
+      unless association
+        raise "Association '#{association_name_str}' not found for #{@model_class.name}"
+      end
+
+      # Skip polymorphic associations as they can't be joined directly
+      if association.polymorphic || association.class_type.nil?
+        raise "Cannot use missing with polymorphic association '#{association_name_str}'"
+      end
+
+      current_table = @model_class.table_name
+      associated_table = association.class_type.not_nil!.table_name
+
+      case association.type
+      when .belongs_to?
+        on_condition = "#{current_table}.#{association.foreign_key} = #{associated_table}.#{association.primary_key}"
+      when .has_many?, .has_one?
+        on_condition = "#{current_table}.#{association.primary_key} = #{associated_table}.#{association.foreign_key}"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+
+      @joins << "LEFT OUTER JOIN #{associated_table} ON #{on_condition}"
+      @where_conditions << "#{associated_table}.#{association.primary_key} IS NULL"
+      @has_joins = true
       self
     end
 
@@ -592,8 +664,9 @@ module Takarik::Data
           where(column, values.map(&.as(DB::Any)))
         end
 
-        def where_not(column : String, values : Array({{type}}))
-          where_not(column, values.map(&.as(DB::Any)))
+        # New not method overloads
+        def not(column : String, values : Array({{type}}))
+          not(column, values.map(&.as(DB::Any)))
         end
       {% end %}
 

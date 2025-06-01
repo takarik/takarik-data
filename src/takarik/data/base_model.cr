@@ -84,10 +84,6 @@ module Takarik::Data
       all.where(**conditions)
     end
 
-    def self.where_not(**conditions)
-      all.where_not(**conditions)
-    end
-
     def self.where(condition : String, *params : DB::Any)
       all.where(condition, *params)
     end
@@ -100,8 +96,25 @@ module Takarik::Data
       all.where(column, values)
     end
 
-    def self.where_not(column : String, values : Array(DB::Any))
-      all.where_not(column, values)
+    # New clean syntax methods
+    def self.not(conditions : Hash(String, DB::Any))
+      all.not(conditions)
+    end
+
+    def self.not(**conditions)
+      all.not(**conditions)
+    end
+
+    def self.not(column : String, values : Array(DB::Any))
+      all.not(column, values)
+    end
+
+    def self.associated(association_name : String | Symbol)
+      all.associated(association_name)
+    end
+
+    def self.missing(association_name : String | Symbol)
+      all.missing(association_name)
     end
 
     def self.select(*columns : String)
@@ -1582,8 +1595,9 @@ module Takarik::Data
           all.where(column_with_operator, value)
         end
 
-        def self.where_not(column : String, values : Array({{type}}))
-          all.where_not(column, values)
+        # New not method overloads
+        def self.not(column : String, values : Array({{type}}))
+          all.not(column, values)
         end
       {% end %}
 

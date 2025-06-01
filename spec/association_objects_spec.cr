@@ -273,7 +273,7 @@ describe "Association Objects Support" do
       post = Post.create(title: "Joinable Post", content: "Content", user: user, published: true)
 
       # Query using joins should work the same
-      posts_with_users = Post.joins("user").where("users.name", "Test User").to_a
+      posts_with_users = Post.join("user").where("users.name", "Test User").to_a
       posts_with_users.size.should eq(1)
       posts_with_users.first.title.should eq("Joinable Post")
     end
