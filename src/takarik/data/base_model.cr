@@ -197,13 +197,7 @@ module Takarik::Data
     # ========================================
 
     def self.find(id)
-      query = "SELECT * FROM #{table_name} WHERE #{primary_key} = ?"
-
-      connection.query_one?(query, id) do |rs|
-        instance = new
-        instance.load_from_result_set(rs)
-        instance
-      end
+      all.where(primary_key, id).first
     end
 
     def self.find!(id)
@@ -211,32 +205,19 @@ module Takarik::Data
     end
 
     def self.first
-      query = "SELECT * FROM #{table_name} LIMIT 1"
-
-      connection.query_one?(query) do |rs|
-        instance = new
-        instance.load_from_result_set(rs)
-        instance
-      end
+      all.first
     end
 
     def self.first!
-      first || raise "No records found"
+      all.first!
     end
 
     def self.last
-      query = "SELECT * FROM #{table_name} ORDER BY #{primary_key} DESC LIMIT 1"
-
-      connection.query_one?(query) do |rs|
-        instance = new
-        instance.load_from_result_set(rs)
-        instance
-      end
+      all.order(primary_key, "DESC").first
     end
 
     def self.count
-      query = "SELECT COUNT(*) FROM #{table_name}"
-      connection.scalar(query).as(Int64)
+      all.count
     end
 
     # ========================================

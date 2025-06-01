@@ -301,10 +301,6 @@ module Takarik::Data
       results
     end
 
-    def all
-      to_a
-    end
-
     def first
       limit(1)
       results = to_a
