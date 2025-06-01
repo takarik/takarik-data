@@ -117,6 +117,31 @@ module Takarik::Data
       self
     end
 
+    def not(condition : String, *params : DB::Any)
+      @where_conditions << "NOT (" + condition + ")"
+      @where_params.concat(params.to_a)
+      self
+    end
+
+    def not(column_with_operator : String, value : DB::Any)
+      if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+        if column_with_operator.includes?("?")
+          @where_conditions << "NOT (" + column_with_operator + ")"
+        else
+          @where_conditions << "NOT (" + column_with_operator + " ?)"
+        end
+        @where_params << value.as(DB::Any)
+      else
+        if value.nil?
+          @where_conditions << "NOT (" + column_with_operator + " IS NULL)"
+        else
+          @where_conditions << "NOT (" + column_with_operator + " = ?)"
+          @where_params << value.as(DB::Any)
+        end
+      end
+      self
+    end
+
     # ========================================
     # ASSOCIATION EXISTENCE METHODS
     # ========================================
@@ -182,6 +207,70 @@ module Takarik::Data
       @joins << "LEFT OUTER JOIN #{associated_table} ON #{on_condition}"
       @where_conditions << "#{associated_table}.#{association.primary_key} IS NULL"
       @has_joins = true
+      self
+    end
+
+    # ========================================
+    # OR METHODS
+    # ========================================
+
+    def or(conditions : Hash(String, DB::Any))
+      # Build the OR conditions
+      or_conditions = [] of String
+      conditions.each do |column, value|
+        if value.nil?
+          or_conditions << column + " IS NULL"
+        elsif value.is_a?(Array)
+          placeholders = (["?"] * value.size).join(", ")
+          or_conditions << column + " IN (#{placeholders})"
+          @where_params.concat(value)
+        else
+          or_conditions << column + " = ?"
+          @where_params << value
+        end
+      end
+
+      # Add OR conditions
+      if or_conditions.any?
+        @where_conditions << "OR (" + or_conditions.join(" AND ") + ")"
+      end
+
+      self
+    end
+
+    def or(**conditions)
+      or(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+    end
+
+    def or(condition : String, *params : DB::Any)
+      @where_conditions << "OR (" + condition + ")"
+      @where_params.concat(params.to_a)
+      self
+    end
+
+    def or(column_with_operator : String, value : DB::Any)
+      if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+        if column_with_operator.includes?("?")
+          @where_conditions << "OR (" + column_with_operator + ")"
+        else
+          @where_conditions << "OR (" + column_with_operator + " ?)"
+        end
+        @where_params << value.as(DB::Any)
+      else
+        if value.nil?
+          @where_conditions << "OR (" + column_with_operator + " IS NULL)"
+        else
+          @where_conditions << "OR (" + column_with_operator + " = ?)"
+          @where_params << value.as(DB::Any)
+        end
+      end
+      self
+    end
+
+    def or(column : String, values : Array(DB::Any))
+      placeholders = (["?"] * values.size).join(", ")
+      @where_conditions << "OR (" + column + " IN (#{placeholders}))"
+      @where_params.concat(values.map(&.as(DB::Any)))
       self
     end
 
@@ -326,7 +415,29 @@ module Takarik::Data
 
       # WHERE clause
       unless @where_conditions.empty?
-        sql_parts << "WHERE #{@where_conditions.join(" AND ")}"
+        # Check if there are any OR conditions and multiple conditions
+        has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
+        has_multiple_conditions = @where_conditions.size > 1
+
+        # Only wrap in parentheses if we have OR conditions or multiple conditions
+        where_clause = @where_conditions.map_with_index do |condition, index|
+          if index == 0
+            if has_or_conditions || has_multiple_conditions
+              "(#{condition})"
+            else
+              condition
+            end
+          elsif condition.starts_with?("OR ")
+            " " + condition
+          else
+            if has_or_conditions || has_multiple_conditions
+              " AND (#{condition})"
+            else
+              " AND " + condition
+            end
+          end
+        end.join("")
+        sql_parts << "WHERE #{where_clause}"
       end
 
       # GROUP BY clause
@@ -486,7 +597,29 @@ module Takarik::Data
 
       sql = "UPDATE #{@model_class.table_name} SET #{set_clause}"
       unless @where_conditions.empty?
-        sql += " WHERE #{@where_conditions.join(" AND ")}"
+        # Check if there are any OR conditions and multiple conditions
+        has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
+        has_multiple_conditions = @where_conditions.size > 1
+
+        # Only wrap in parentheses if we have OR conditions or multiple conditions
+        where_clause = @where_conditions.map_with_index do |condition, index|
+          if index == 0
+            if has_or_conditions || has_multiple_conditions
+              "(#{condition})"
+            else
+              condition
+            end
+          elsif condition.starts_with?("OR ")
+            " " + condition
+          else
+            if has_or_conditions || has_multiple_conditions
+              " AND (#{condition})"
+            else
+              " AND " + condition
+            end
+          end
+        end.join("")
+        sql += " WHERE #{where_clause}"
       end
 
       result = @model_class.connection.exec(sql, args: update_params)
@@ -500,7 +633,29 @@ module Takarik::Data
     def delete_all
       sql = "DELETE FROM #{@model_class.table_name}"
       unless @where_conditions.empty?
-        sql += " WHERE #{@where_conditions.join(" AND ")}"
+        # Check if there are any OR conditions and multiple conditions
+        has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
+        has_multiple_conditions = @where_conditions.size > 1
+
+        # Only wrap in parentheses if we have OR conditions or multiple conditions
+        where_clause = @where_conditions.map_with_index do |condition, index|
+          if index == 0
+            if has_or_conditions || has_multiple_conditions
+              "(#{condition})"
+            else
+              condition
+            end
+          elsif condition.starts_with?("OR ")
+            " " + condition
+          else
+            if has_or_conditions || has_multiple_conditions
+              " AND (#{condition})"
+            else
+              " AND " + condition
+            end
+          end
+        end.join("")
+        sql += " WHERE #{where_clause}"
       end
 
       result = @model_class.connection.exec(sql, args: combined_params)
@@ -633,6 +788,10 @@ module Takarik::Data
 
     macro generate_where_overloads
       {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time] %}
+        # ========================================
+        # WHERE METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
         def where(condition : String, param : {{type}})
           @where_conditions << condition
           @where_params << param.as(DB::Any)
@@ -664,11 +823,80 @@ module Takarik::Data
           where(column, values.map(&.as(DB::Any)))
         end
 
-        # New not method overloads
+        # ========================================
+        # NOT METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
+        def not(condition : String, param : {{type}})
+          @where_conditions << "NOT (" + condition + ")"
+          @where_params << param.as(DB::Any)
+          self
+        end
+
+        def not(condition : String, *params : {{type}})
+          @where_conditions << "NOT (" + condition + ")"
+          params.each { |param| @where_params << param.as(DB::Any) }
+          self
+        end
+
+        def not(column_with_operator : String, value : {{type}})
+          if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+            if column_with_operator.includes?("?")
+              @where_conditions << "NOT (" + column_with_operator + ")"
+            else
+              @where_conditions << "NOT (" + column_with_operator + " ?)"
+            end
+            @where_params << value.as(DB::Any)
+          else
+            @where_conditions << "NOT (" + column_with_operator + " = ?)"
+            @where_params << value.as(DB::Any)
+          end
+          self
+        end
+
         def not(column : String, values : Array({{type}}))
           not(column, values.map(&.as(DB::Any)))
         end
+
+        # ========================================
+        # OR METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
+        def or(condition : String, param : {{type}})
+          @where_conditions << "OR (" + condition + ")"
+          @where_params << param.as(DB::Any)
+          self
+        end
+
+        def or(condition : String, *params : {{type}})
+          @where_conditions << "OR (" + condition + ")"
+          params.each { |param| @where_params << param.as(DB::Any) }
+          self
+        end
+
+        def or(column_with_operator : String, value : {{type}})
+          if column_with_operator.includes?("?") || column_with_operator.includes?(" ")
+            if column_with_operator.includes?("?")
+              @where_conditions << "OR (" + column_with_operator + ")"
+            else
+              @where_conditions << "OR (" + column_with_operator + " ?)"
+            end
+            @where_params << value.as(DB::Any)
+          else
+            @where_conditions << "OR (" + column_with_operator + " = ?)"
+            @where_params << value.as(DB::Any)
+          end
+          self
+        end
+
+        def or(column : String, values : Array({{type}}))
+          or(column, values.map(&.as(DB::Any)))
+        end
       {% end %}
+
+      # ========================================
+      # RANGE METHOD OVERLOADS
+      # ========================================
 
       {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
         def where(column : String, range : Range({{type}}, {{type}}))
@@ -676,6 +904,26 @@ module Takarik::Data
             @where_conditions << "#{column} >= ? AND #{column} < ?"
           else
             @where_conditions << "#{column} BETWEEN ? AND ?"
+          end
+          @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+          self
+        end
+
+        def not(column : String, range : Range({{type}}, {{type}}))
+          if range.exclusive?
+            @where_conditions << "NOT (#{column} >= ? AND #{column} < ?)"
+          else
+            @where_conditions << "NOT (#{column} BETWEEN ? AND ?)"
+          end
+          @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
+          self
+        end
+
+        def or(column : String, range : Range({{type}}, {{type}}))
+          if range.exclusive?
+            @where_conditions << "OR (#{column} >= ? AND #{column} < ?)"
+          else
+            @where_conditions << "OR (#{column} BETWEEN ? AND ?)"
           end
           @where_params << range.begin.as(DB::Any) << range.end.as(DB::Any)
           self

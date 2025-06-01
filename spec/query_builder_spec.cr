@@ -20,7 +20,7 @@ describe Takarik::Data::QueryBuilder do
 
     it "builds where queries with multiple conditions" do
       query = User.where(active: true, age: 30)
-      query.to_sql.should contain("WHERE active = ? AND age = ?")
+      query.to_sql.should contain("WHERE (active = ?) AND (age = ?)")
 
       results = query.to_a
       results.size.should eq(1)
@@ -111,6 +111,82 @@ describe Takarik::Data::QueryBuilder do
       end_time = Time.utc(2023, 12, 31)
       query = User.where("created_at", start_time..end_time)
       query.to_sql.should contain("WHERE created_at BETWEEN ? AND ?")
+    end
+
+    it "supports NOT range queries" do
+      # Integer ranges with NOT
+      query = User.not("age", 18..30)
+      query.to_sql.should contain("WHERE NOT (age BETWEEN ? AND ?)")
+
+      # Exclusive ranges with NOT
+      query = User.not("age", 18...30)
+      query.to_sql.should contain("WHERE NOT (age >= ? AND age < ?)")
+
+      # Float ranges with NOT
+      query = User.not("score", 80.0..90.0)
+      query.to_sql.should contain("WHERE NOT (score BETWEEN ? AND ?)")
+
+      # String ranges with NOT
+      query = User.not("name", "A".."M")
+      query.to_sql.should contain("WHERE NOT (name BETWEEN ? AND ?)")
+
+      # Time ranges with NOT
+      start_time = Time.utc(2023, 1, 1)
+      end_time = Time.utc(2023, 12, 31)
+      query = User.not("created_at", start_time..end_time)
+      query.to_sql.should contain("WHERE NOT (created_at BETWEEN ? AND ?)")
+    end
+
+    it "supports OR range queries" do
+      # Integer ranges with OR
+      query = User.where(name: "Alice").or("age", 30..40)
+      query.to_sql.should contain("WHERE (name = ?) OR (age BETWEEN ? AND ?)")
+
+      # Exclusive ranges with OR
+      query = User.where(active: true).or("age", 25...35)
+      query.to_sql.should contain("WHERE (active = ?) OR (age >= ? AND age < ?)")
+
+      # Float ranges with OR
+      query = User.where(name: "Bob").or("score", 85.0..95.0)
+      query.to_sql.should contain("WHERE (name = ?) OR (score BETWEEN ? AND ?)")
+
+      # String ranges with OR
+      query = User.where(active: true).or("name", "N".."Z")
+      query.to_sql.should contain("WHERE (active = ?) OR (name BETWEEN ? AND ?)")
+
+      # Time ranges with OR
+      start_time = Time.utc(2023, 1, 1)
+      end_time = Time.utc(2023, 6, 30)
+      query = User.where(active: false).or("created_at", start_time..end_time)
+      query.to_sql.should contain("WHERE (active = ?) OR (created_at BETWEEN ? AND ?)")
+    end
+
+    it "executes NOT and OR range queries with data" do
+      # Test NOT with ranges - users NOT between ages 26-32 (Alice: 25, Charlie: 35)
+      query = User.not("age", 26..32)
+      query.size.should eq(2)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Charlie")
+
+      # Test NOT with exclusive ranges - users NOT between ages 25 (inclusive) to 30 (exclusive)
+      # 25...30 means age >= 25 AND age < 30, so NOT means outside this range
+      # Should include Bob (30) and Charlie (35), but not Alice (25) or Diana (28)
+      query = User.not("age", 25...30)
+      query.size.should eq(2)
+      query.map(&.name).should contain("Bob")    # 30 is not in [25...30)
+      query.map(&.name).should contain("Charlie") # 35 is not in [25...30)
+
+      # Test OR with ranges - users named Alice OR aged between 28-35
+      query = User.where(name: "Alice").or("age", 28..35)
+      query.size.should eq(4) # Alice (25, by name), Diana (28), Bob (30), Charlie (35)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Diana")
+      query.map(&.name).should contain("Bob")
+      query.map(&.name).should contain("Charlie")
+
+      # Test OR with exclusive ranges - active users OR aged between 30 (exclusive) to 40 (exclusive)
+      query = User.where(active: true).or("age", 30...40)
+      query.size.should eq(4) # All active users (Alice, Bob, Diana) + Charlie (35 in range)
     end
 
     it "builds comparison queries" do
@@ -241,6 +317,107 @@ describe Takarik::Data::QueryBuilder do
       # Test with nil value
       query = User.where("email", nil)
       query.to_sql.should contain("WHERE email IS NULL")
+    end
+
+    it "builds NOT IN queries" do
+      query = User.not("age", [25])
+      query.to_sql.should contain("WHERE age NOT IN (?)")
+    end
+
+    it "builds NOT queries with raw SQL conditions" do
+      # NOT with single parameter
+      query = User.not("age > ?", 30)
+      query.to_sql.should contain("WHERE NOT (age > ?)")
+
+      # NOT with multiple parameters
+      query = User.not("age BETWEEN ? AND ?", 25, 35)
+      query.to_sql.should contain("WHERE NOT (age BETWEEN ? AND ?)")
+
+      # NOT with complex conditions
+      query = User.not("name LIKE ? OR age = ?", "A%", 25)
+      query.to_sql.should contain("WHERE NOT (name LIKE ? OR age = ?)")
+    end
+
+    it "builds NOT queries with column operators" do
+      # NOT with basic operators
+      query = User.not("age >", 30)
+      query.to_sql.should contain("WHERE NOT (age > ?)")
+
+      query = User.not("age <", 25)
+      query.to_sql.should contain("WHERE NOT (age < ?)")
+
+      query = User.not("age >=", 30)
+      query.to_sql.should contain("WHERE NOT (age >= ?)")
+
+      query = User.not("age <=", 25)
+      query.to_sql.should contain("WHERE NOT (age <= ?)")
+
+      # NOT with LIKE operator
+      query = User.not("name LIKE", "A%")
+      query.to_sql.should contain("WHERE NOT (name LIKE ?)")
+
+      # NOT with equals (should behave same as basic syntax)
+      query = User.not("name", "Alice")
+      query.to_sql.should contain("WHERE NOT (name = ?)")
+
+      # NOT with IS NULL condition
+      query = User.not("email", nil)
+      query.to_sql.should contain("WHERE NOT (email IS NULL)")
+    end
+
+    it "supports different parameter types for NOT queries" do
+      # Integer parameters
+      query = User.not("age >", 25)
+      query.to_sql.should contain("WHERE NOT (age > ?)")
+
+      # String parameters
+      query = User.not("name LIKE", "A%")
+      query.to_sql.should contain("WHERE NOT (name LIKE ?)")
+
+      # Boolean parameters
+      query = User.not("active", true)
+      query.to_sql.should contain("WHERE NOT (active = ?)")
+
+      # Float parameters
+      query = User.not("score >=", 85.5)
+      query.to_sql.should contain("WHERE NOT (score >= ?)")
+
+      # Multiple parameters with variadic syntax
+      query = User.not("age BETWEEN ? AND ?", 25, 35)
+      query.to_sql.should contain("WHERE NOT (age BETWEEN ? AND ?)")
+
+      # Array parameters
+      query = User.not("age", [25, 30, 35])
+      query.to_sql.should contain("WHERE age NOT IN (?, ?, ?)")
+    end
+
+    it "executes NOT queries with data" do
+      # Test NOT with raw SQL conditions
+      query = User.not("age > ?", 28)
+      query.size.should eq(2) # Alice (25) and Diana (28)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Diana")
+
+      # Test NOT with column operators
+      query = User.not("age >=", 30)
+      query.size.should eq(2) # Alice (25) and Diana (28)
+      query.map(&.name).should contain("Alice")
+      query.map(&.name).should contain("Diana")
+
+      # Test NOT with LIKE
+      query = User.not("name LIKE", "A%")
+      query.size.should eq(3) # Bob, Charlie, Diana (not Alice)
+      query.map(&.name).should_not contain("Alice")
+
+      # Test NOT with array/IN syntax
+      query = User.not("age", [25, 30])
+      query.size.should eq(2) # Charlie (35) and Diana (28)
+      query.map(&.name).should contain("Charlie")
+      query.map(&.name).should contain("Diana")
+
+      # Test NOT with nil
+      query = User.not("email", nil)
+      query.size.should eq(4) # All users have emails
     end
   end
 
@@ -496,7 +673,7 @@ describe Takarik::Data::QueryBuilder do
         .order("name")
         .limit(5)
 
-      complex_query.to_sql.should contain("WHERE active = ? AND age >= ?")
+      complex_query.to_sql.should contain("WHERE (active = ?) AND (age >= ?)")
       complex_query.to_sql.should contain("ORDER BY name ASC")
       complex_query.to_sql.should contain("LIMIT 5")
     end
@@ -507,7 +684,7 @@ describe Takarik::Data::QueryBuilder do
         .where("age >=", 25)
         .where("name LIKE", "A%")
 
-      query.to_sql.should contain("WHERE active = ? AND age >= ? AND name LIKE ?")
+      query.to_sql.should contain("WHERE (active = ?) AND (age >= ?) AND (name LIKE ?)")
     end
   end
 
@@ -524,7 +701,7 @@ describe Takarik::Data::QueryBuilder do
       sql = query.to_sql
       sql.should contain("SELECT users.name, users.age")
       sql.should contain("FROM users")
-      sql.should contain("WHERE active = ? AND age >= ?")
+      sql.should contain("WHERE (active = ?) AND (age >= ?)")
       sql.should contain("ORDER BY age DESC")
       sql.should contain("LIMIT 10")
       sql.should contain("OFFSET 0")
@@ -642,7 +819,7 @@ describe Takarik::Data::QueryBuilder do
       results.size.should eq(2)
 
       sql = query.to_sql
-      sql.should contain("WHERE posts.published = ? AND users.active = ?")
+      sql.should contain("WHERE (posts.published = ?) AND (users.active = ?)")
     end
 
     it "supports complex joins with multiple conditions" do
@@ -669,7 +846,7 @@ describe Takarik::Data::QueryBuilder do
       results.size.should eq(2) # Alice and Bob's published posts
 
       sql = query.to_sql
-      sql.should contain("WHERE users.age >= ? AND posts.published = ? AND users.active = ?")
+      sql.should contain("WHERE (users.age >= ?) AND (posts.published = ?) AND (users.active = ?)")
       sql.should contain("ORDER BY users.name ASC")
     end
 
@@ -833,7 +1010,7 @@ describe Takarik::Data::QueryBuilder do
       sql.should contain("SELECT users.name, posts.title")
       sql.should contain("FROM users")
       sql.should contain("INNER JOIN posts")
-      sql.should contain("WHERE users.active = ? AND users.email = ? AND posts.published = ?")
+      sql.should contain("WHERE (users.active = ?) AND (users.email = ?) AND (posts.published = ?)")
       sql.should contain("GROUP BY users.id, users.name, posts.title")
       sql.should contain("HAVING COUNT(*) > ?")
       sql.should contain("ORDER BY users.name ASC")
@@ -1336,6 +1513,62 @@ describe Takarik::Data::QueryBuilder do
         results = User.where("email LIKE", "%_assoc_test@%").missing(:posts).where(active: false).to_a
         results.size.should eq(1)
         results.first.name.should eq("Charlie")
+      end
+    end
+  end
+
+  describe "logical operators" do
+    describe "OR conditions" do
+      it "builds OR queries with hash conditions" do
+        query = User.where(name: "Alice").or(age: 30)
+        query.to_sql.should contain("WHERE (name = ?) OR (age = ?)")
+      end
+
+      it "builds OR queries with named parameters" do
+        query = User.where(active: true).or(name: "Charlie", age: 35)
+        query.to_sql.should contain("WHERE (active = ?) OR (name = ? AND age = ?)")
+      end
+
+      it "builds OR queries with raw SQL" do
+        query = User.where(active: true).or("age > ?", 30)
+        query.to_sql.should contain("WHERE (active = ?) OR (age > ?)")
+      end
+
+      it "builds OR queries with column operators" do
+        query = User.where(name: "Alice").or("age >=", 30)
+        query.to_sql.should contain("WHERE (name = ?) OR (age >= ?)")
+      end
+
+      it "builds OR queries with IN conditions" do
+        query = User.where(active: true).or("age", [25, 35])
+        query.to_sql.should contain("WHERE (active = ?) OR (age IN (?, ?))")
+      end
+
+      it "executes OR queries correctly" do
+        # Should find users who are either named Alice OR aged 35
+        results = User.where(name: "Alice").or(age: 35).to_a
+        results.size.should eq(2)
+
+        names_and_ages = results.map { |u| {u.name || "", u.age || 0} }.sort_by(&.[0])
+        names_and_ages.should eq([{"Alice", 25}, {"Charlie", 35}])
+      end
+
+      it "handles multiple OR conditions" do
+        query = User.where(name: "Alice").or(age: 30).or(active: false)
+        sql = query.to_sql
+        sql.should contain("WHERE (name = ?) OR (age = ?) OR (active = ?)")
+      end
+    end
+
+    describe "class method shortcuts" do
+      it "provides OR class methods" do
+        results = User.where(name: "Alice").or(age: 35).to_a
+        results.size.should eq(2)
+      end
+
+      it "supports type-specific overloads for OR" do
+        query = User.where(active: true).or("age", [25, 35])
+        query.to_sql.should contain("WHERE (active = ?) OR (age IN (?, ?))")
       end
     end
   end

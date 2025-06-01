@@ -109,12 +109,49 @@ module Takarik::Data
       all.not(column, values)
     end
 
+    def self.not(condition : String, param : DB::Any)
+      all.not(condition, param)
+    end
+
+    def self.not(condition : String, *params : DB::Any)
+      all.not(condition, *params)
+    end
+
+    def self.not(column_with_operator : String, value : DB::Any)
+      all.not(column_with_operator, value)
+    end
+
     def self.associated(association_name : String | Symbol)
       all.associated(association_name)
     end
 
     def self.missing(association_name : String | Symbol)
       all.missing(association_name)
+    end
+
+    # Logical operator methods
+    def self.or(conditions : Hash(String, DB::Any))
+      all.or(conditions)
+    end
+
+    def self.or(**conditions)
+      all.or(**conditions)
+    end
+
+    def self.or(condition : String, param : DB::Any)
+      all.or(condition, param)
+    end
+
+    def self.or(condition : String, *params : DB::Any)
+      all.or(condition, *params)
+    end
+
+    def self.or(column_with_operator : String, value : DB::Any)
+      all.or(column_with_operator, value)
+    end
+
+    def self.or(column : String, values : Array(DB::Any))
+      all.or(column, values)
     end
 
     def self.select(*columns : String)
@@ -1583,6 +1620,14 @@ module Takarik::Data
 
     macro generate_base_model_where_overloads
       {% for type in [Int32, Int64, String, Float32, Float64, Bool, Time] %}
+        # ========================================
+        # WHERE CLASS METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
+        def self.where(condition : String, param : {{type}})
+          all.where(condition, param)
+        end
+
         def self.where(condition : String, *params : {{type}})
           all.where(condition, *params)
         end
@@ -1595,15 +1640,62 @@ module Takarik::Data
           all.where(column_with_operator, value)
         end
 
-        # New not method overloads
+        # ========================================
+        # NOT CLASS METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
+        def self.not(condition : String, param : {{type}})
+          all.not(condition, param)
+        end
+
+        def self.not(condition : String, *params : {{type}})
+          all.not(condition, *params)
+        end
+
+        def self.not(column_with_operator : String, value : {{type}})
+          all.not(column_with_operator, value)
+        end
+
         def self.not(column : String, values : Array({{type}}))
           all.not(column, values)
         end
+
+        # ========================================
+        # OR CLASS METHOD OVERLOADS FOR {{type}}
+        # ========================================
+
+        def self.or(condition : String, param : {{type}})
+          all.or(condition, param)
+        end
+
+        def self.or(condition : String, *params : {{type}})
+          all.or(condition, *params)
+        end
+
+        def self.or(column_with_operator : String, value : {{type}})
+          all.or(column_with_operator, value)
+        end
+
+        def self.or(column : String, values : Array({{type}}))
+          all.or(column, values)
+        end
       {% end %}
+
+      # ========================================
+      # RANGE CLASS METHOD OVERLOADS
+      # ========================================
 
       {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
         def self.where(column : String, range : Range({{type}}, {{type}}))
           all.where(column, range)
+        end
+
+        def self.not(column : String, range : Range({{type}}, {{type}}))
+          all.not(column, range)
+        end
+
+        def self.or(column : String, range : Range({{type}}, {{type}}))
+          all.or(column, range)
         end
       {% end %}
     end
