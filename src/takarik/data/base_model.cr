@@ -1,5 +1,6 @@
 require "db"
 require "json"
+require "base64"
 require "./string"
 require "./query_builder"
 require "./validations"
@@ -20,7 +21,6 @@ module Takarik::Data
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
   abstract class BaseModel
-    include JSON::Serializable
     include Validations
     include Associations
 
@@ -788,6 +788,46 @@ module Takarik::Data
     end
 
     # ========================================
+    # INSTANCE METHODS - JSON SERIALIZATION
+    # ========================================
+
+    def to_json(json : JSON::Builder)
+      json.object do
+        @attributes.each do |key, value|
+          json.field key do
+            case value
+            when Nil
+              json.null
+            when Bool
+              json.bool(value)
+            when String
+              json.string(value)
+            when Int32, Int64, Float32, Float64
+              json.number(value)
+            when Time
+              json.string(value.to_rfc3339)
+            when Bytes
+              # Convert binary data to base64 string
+              json.string(Base64.strict_encode(value))
+            end
+          end
+        end
+      end
+    end
+
+    def to_json(io : IO) : Nil
+      JSON.build(io) do |json|
+        to_json(json)
+      end
+    end
+
+    def to_json : String
+      JSON.build do |json|
+        to_json(json)
+      end
+    end
+
+    # ========================================
     # PROTECTED METHODS
     # ========================================
 
@@ -1045,11 +1085,6 @@ module Takarik::Data
 
     macro column(name, type, **options)
       define_property_with_accessors({{name}}, {{type}})
-
-      # Add to JSON serialization
-      def {{name.id}}_json
-        @{{name.id}}.try(&.to_json) || "null"
-      end
     end
 
     macro table_name(name)
@@ -1679,7 +1714,12 @@ module Takarik::Data
               nil
             end
           {% elsif type == Time %}
-            value.is_a?(Time) ? value : nil
+            case value
+            when Time
+              value
+            else
+              nil
+            end
           {% else %}
             value.as?({{type}})
           {% end %}
@@ -1749,7 +1789,12 @@ module Takarik::Data
                   nil
                 end
               {% elsif ivar.type.stringify.includes?("Time") %}
-                @{{ivar.name}} = value.is_a?(Time) ? value : nil
+                @{{ivar.name}} = case value
+                when Time
+                  value
+                else
+                  nil
+                end
               {% else %}
                 @{{ivar.name}} = value
               {% end %}
