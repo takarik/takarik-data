@@ -28,7 +28,6 @@ end
 
 describe "Complete ActiveRecord Eager Loading Comparison" do
   it "should demonstrate all four approaches: N+1, includes, preload, eager_load" do
-    Takarik::Data.establish_connection("sqlite3:./test_all_methods.db")
 
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_all")

@@ -28,7 +28,6 @@ end
 
 describe "ActiveRecord Eager Load Specification" do
   it "should follow ActiveRecord's eager_load behavior - 1 query with LEFT OUTER JOIN" do
-    Takarik::Data.establish_connection("sqlite3:./test_eager_load.db")
 
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_el")

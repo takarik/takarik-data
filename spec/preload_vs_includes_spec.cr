@@ -28,7 +28,6 @@ end
 
 describe "Preload vs Includes vs N+1 Comparison" do
   it "should demonstrate all three approaches according to ActiveRecord specification" do
-    Takarik::Data.establish_connection("sqlite3:./test_comparison.db")
 
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_comparison")

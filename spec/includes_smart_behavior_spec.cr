@@ -30,7 +30,6 @@ end
 
 describe "Includes Smart Behavior (ActiveRecord 13.2)" do
   it "should use 2 queries by default, LEFT JOIN with conditions" do
-    Takarik::Data.establish_connection("sqlite3:./test_includes_smart.db")
 
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_smart")
