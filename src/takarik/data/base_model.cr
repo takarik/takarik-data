@@ -28,11 +28,14 @@ module Takarik::Data
     # CLASS VARIABLES
     # ========================================
 
-    # Class variable to store column names for each model
-    @@column_names = {} of String => Array(String)
+    # Class variable to store custom table name for each model
+    @@table_name : String?
 
     # Class variable to store primary key name for each model
     @@primary_key_name = "id"
+
+    # Class variable to store column names for each model
+    @@column_names = {} of String => Array(String)
 
     # ========================================
     # INSTANCE VARIABLES
@@ -54,7 +57,7 @@ module Takarik::Data
     end
 
     def self.table_name
-      self.name.split("::").last.tableize
+      @@table_name || self.name.split("::").last.tableize
     end
 
     def self.primary_key
@@ -1280,13 +1283,12 @@ module Takarik::Data
     end
 
     macro table_name(name)
-      def self.table_name
-        {% if name.is_a?(SymbolLiteral) %}
-          {{name.id.stringify}}
-        {% else %}
-          {{name}}
-        {% end %}
-      end
+      # Override the default table name by setting the class variable
+      {% if name.is_a?(SymbolLiteral) %}
+        @@table_name = {{name.id.stringify}}
+      {% else %}
+        @@table_name = {{name}}
+      {% end %}
     end
 
     # Enhanced scope macro supporting arguments and conditionals like ActiveRecord
