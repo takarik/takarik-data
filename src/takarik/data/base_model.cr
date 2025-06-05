@@ -257,6 +257,14 @@ module Takarik::Data
       all.preload(association_names)
     end
 
+    def self.eager_load(*association_names : String | Symbol)
+      all.eager_load(*association_names)
+    end
+
+    def self.eager_load(association_names : Array(String | Symbol))
+      all.eager_load(association_names)
+    end
+
     def self.group(*columns : String)
       all.group(*columns)
     end

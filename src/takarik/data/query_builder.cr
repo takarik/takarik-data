@@ -14,6 +14,7 @@ module Takarik::Data
     @has_joins = false
     @includes = [] of String
     @preloads = [] of String
+    @eager_loads = [] of String
 
     def initialize(@model_class : T.class)
     end
@@ -350,6 +351,24 @@ module Takarik::Data
     end
 
     # ========================================
+    # EAGER_LOAD METHODS (LEFT OUTER JOIN Eager Loading)
+    # ========================================
+
+    def eager_load(*association_names : String | Symbol)
+      association_names.each do |association_name|
+        add_eager_load(association_name.to_s)
+      end
+      self
+    end
+
+    def eager_load(association_names : Array(String | Symbol))
+      association_names.each do |association_name|
+        add_eager_load(association_name.to_s)
+      end
+      self
+    end
+
+    # ========================================
     # ORDER METHODS
     # ========================================
 
@@ -589,6 +608,8 @@ module Takarik::Data
           instance = @model_class.new
           if @includes.any?
             instance.load_from_result_set_with_includes(rs, @includes)
+          elsif @eager_loads.any?
+            instance.load_from_result_set_with_includes(rs, @eager_loads)
           elsif @has_joins
             instance.load_from_prefixed_result_set(rs)
           else
@@ -1014,6 +1035,25 @@ module Takarik::Data
         end
       end
 
+      # Include columns from associated tables when using eager_load
+      @eager_loads.each do |association_name|
+        associations = @model_class.associations
+        association = associations.find { |a| a.name == association_name }
+        next unless association && association.class_type && !association.polymorphic
+
+        associated_table = association.class_type.not_nil!.table_name
+        associated_table_clean = associated_table.gsub("\"", "")
+
+        associated_columns = association.class_type.not_nil!.column_names
+        if associated_columns.empty?
+          associated_columns = ["id", "created_at", "updated_at"]
+        end
+
+        associated_columns.each do |col|
+          all_columns << "#{associated_table_clean}.#{col} AS #{associated_table_clean}_#{col}"
+        end
+      end
+
       all_columns.join(", ")
     end
 
@@ -1044,6 +1084,30 @@ module Takarik::Data
       return if @preloads.includes?(association_name)
 
       @preloads << association_name
+    end
+
+    private def add_eager_load(association_name : String)
+      # Validate the association exists
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+
+      unless association
+        raise "Association '#{association_name}' not found for #{@model_class.name}"
+      end
+
+      # Skip polymorphic associations as they can't be eagerly loaded
+      if association.polymorphic
+        raise "Cannot eager load polymorphic association '#{association_name}'"
+      end
+
+      # Don't add duplicate eager loads
+      return if @eager_loads.includes?(association_name)
+
+      @eager_loads << association_name
+      @has_joins = true
+
+      # Add a LEFT OUTER JOIN for the association
+      add_association_join("LEFT OUTER JOIN", association_name)
     end
 
     private def perform_preloading(records : Array(T))
