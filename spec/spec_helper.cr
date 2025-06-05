@@ -523,42 +523,29 @@ end
 
 # Clean up before each test
 Spec.before_each do
-  # Clean up test tables in correct order (child tables first)
-  # Clean up many-to-many tables first
-  Takarik::Data.connection.exec("DELETE FROM courses_students")
-  Takarik::Data.connection.exec("DELETE FROM manifests")
-  Takarik::Data.connection.exec("DELETE FROM courses")
-  Takarik::Data.connection.exec("DELETE FROM students")
-  Takarik::Data.connection.exec("DELETE FROM assemblies")
-  Takarik::Data.connection.exec("DELETE FROM parts")
+  # Clean up all test tables (organized by dependency order - child tables first)
+  tables_to_clean = [
+    # Many-to-many and join tables
+    "manifests", "courses", "students", "assemblies", "parts",
 
-  # Clean up polymorphic tables
-  Takarik::Data.connection.exec("DELETE FROM pictures")
-  Takarik::Data.connection.exec("DELETE FROM employees")
-  Takarik::Data.connection.exec("DELETE FROM products")
-  Takarik::Data.connection.exec("DELETE FROM events")
+    # Polymorphic tables
+    "pictures", "employees", "products", "events",
 
-  # Clean up existing test tables
-  Takarik::Data.connection.exec("DELETE FROM tasks")
-  Takarik::Data.connection.exec("DELETE FROM users_optional")
-  Takarik::Data.connection.exec("DELETE FROM projects")
-  Takarik::Data.connection.exec("DELETE FROM book_symbols")
-  Takarik::Data.connection.exec("DELETE FROM library_symbols")
-  Takarik::Data.connection.exec("DELETE FROM magazine_strings")
-  Takarik::Data.connection.exec("DELETE FROM publisher_strings")
-  Takarik::Data.connection.exec("DELETE FROM book_strings")
-  Takarik::Data.connection.exec("DELETE FROM author_strings")
-  Takarik::Data.connection.exec("DELETE FROM order_dependents")
-  Takarik::Data.connection.exec("DELETE FROM customer_dependents")
-  Takarik::Data.connection.exec("DELETE FROM employee_independents")
-  Takarik::Data.connection.exec("DELETE FROM company_independents")
-  Takarik::Data.connection.exec("DELETE FROM product_nullifies")
-  Takarik::Data.connection.exec("DELETE FROM category_nullifies")
-  Takarik::Data.connection.exec("DELETE FROM employee_delete_alls")
-  Takarik::Data.connection.exec("DELETE FROM department_delete_alls")
-  Takarik::Data.connection.exec("DELETE FROM comments")
-  Takarik::Data.connection.exec("DELETE FROM posts")
-  Takarik::Data.connection.exec("DELETE FROM users")
+    # Regular test tables
+    "tasks", "users_optional", "projects", "book_symbols", "library_symbols",
+    "magazine_strings", "publisher_strings", "book_strings", "author_strings",
+    "order_dependents", "customer_dependents", "employee_independents", "company_independents",
+    "product_nullifies", "category_nullifies", "employee_delete_alls", "department_delete_alls",
+    "comments", "posts", "users"
+  ]
+
+  tables_to_clean.each do |table|
+    begin
+      Takarik::Data.connection.exec("DELETE FROM #{table}")
+    rescue SQLite3::Exception
+      # Table may not exist, ignore
+    end
+  end
 end
 
 # Test models for polymorphic associations

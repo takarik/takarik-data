@@ -1,3 +1,5 @@
+require "set"
+
 module Takarik::Data
   class QueryBuilder(T)
     @model_class : T.class
@@ -528,10 +530,21 @@ module Takarik::Data
     # ========================================
 
     def to_sql
+      # First, determine if includes should use JOIN strategy
+      use_join_for_includes = @includes.any? && has_association_conditions?
+
+      # Add JOINs for includes if needed
+      if use_join_for_includes && !@has_joins
+        @includes.each do |association_name|
+          add_association_join("LEFT JOIN", association_name)
+        end
+        @has_joins = true
+      end
+
       sql_parts = [] of String
 
       # SELECT clause
-      if @has_joins && @select_clause.nil?
+      if (@has_joins || use_join_for_includes) && @select_clause.nil?
         select_part = get_prefixed_columns
       else
         select_part = @select_clause || "*"
@@ -603,10 +616,14 @@ module Takarik::Data
 
     def to_a
       results = [] of T
+
+      # Check if includes should use JOIN strategy (when conditions reference associations)
+      use_join_for_includes = @includes.any? && has_association_conditions?
+
       @model_class.connection.query(to_sql, args: combined_params) do |rs|
         rs.each do
           instance = @model_class.new
-          if @includes.any?
+          if use_join_for_includes
             instance.load_from_result_set_with_includes(rs, @includes)
           elsif @eager_loads.any?
             instance.load_from_result_set_with_includes(rs, @eager_loads)
@@ -617,6 +634,11 @@ module Takarik::Data
           end
           results << instance
         end
+      end
+
+      # Handle includes with separate queries (default behavior)
+      if @includes.any? && !use_join_for_includes
+        perform_preloading_for_includes(results)
       end
 
       # Handle preloading with separate queries after main query
@@ -994,10 +1016,7 @@ module Takarik::Data
       return if @includes.includes?(association_name)
 
       @includes << association_name
-      @has_joins = true
-
-      # Add a LEFT JOIN for the association
-      add_association_join("LEFT JOIN", association_name)
+      # JOIN logic is handled in to_sql method based on conditions
     end
 
     private def get_prefixed_columns
@@ -1106,8 +1125,39 @@ module Takarik::Data
       @eager_loads << association_name
       @has_joins = true
 
-      # Add a LEFT OUTER JOIN for the association
-      add_association_join("LEFT OUTER JOIN", association_name)
+      # Add a LEFT JOIN for the association
+      add_association_join("LEFT JOIN", association_name)
+    end
+
+    # Check if where conditions reference any of the included associations
+    private def has_association_conditions?
+      return false if @includes.empty? || @where_conditions.empty?
+
+      # Get association table names
+      association_tables = Set(String).new
+      @includes.each do |association_name|
+        associations = @model_class.associations
+        association = associations.find { |a| a.name == association_name }
+        if association && association.class_type && !association.polymorphic
+          table_name = association.class_type.not_nil!.table_name
+          clean_table_name = table_name.gsub("\"", "")
+          association_tables.add(clean_table_name)
+        end
+      end
+
+      # Check if any where condition references association tables
+      @where_conditions.any? do |condition|
+        association_tables.any? { |table| condition.includes?(table) }
+      end
+    end
+
+    # Handle includes with separate queries (same as preload)
+    private def perform_preloading_for_includes(records : Array(T))
+      return if records.empty?
+
+      @includes.each do |association_name|
+        preload_association(records, association_name)
+      end
     end
 
     private def perform_preloading(records : Array(T))
