@@ -81,7 +81,7 @@ describe "ActiveRecord Eager Load Specification" do
 
 
     books.each_with_index do |book, index|
-      author = book.author_el.target
+      author = book.author_el
       if author
         last_name = author.last_name
       end
@@ -89,7 +89,7 @@ describe "ActiveRecord Eager Load Specification" do
 
     # Verify eager_load worked
     books.each do |book|
-      book.author_el.loaded?.should be_true
+      book.author_el_loaded?.should be_true
     end
 
 
@@ -109,10 +109,10 @@ describe "ActiveRecord Eager Load Specification" do
     books_pre.size.should eq(books_eager.size)
 
     # Verify all have associations loaded
-    books.all? { |book| book.author_el.loaded? }.should be_true
-    books_inc.all? { |book| book.author_el.loaded? }.should be_true
-    books_pre.all? { |book| book.author_el.loaded? }.should be_true
-    books_eager.all? { |book| book.author_el.loaded? }.should be_true
+    books.all? { |book| book.author_el_loaded? }.should be_true
+    books_inc.all? { |book| book.author_el_loaded? }.should be_true
+    books_pre.all? { |book| book.author_el_loaded? }.should be_true
+    books_eager.all? { |book| book.author_el_loaded? }.should be_true
   end
 
 

@@ -413,8 +413,28 @@ module Takarik::Data
         {% end %}
 
         # Define the getter method
-        def {{name.id}}
-          Takarik::Data::AssociationProxy.new(self, {{name.id.stringify}})
+        def {{name.id}} : {{class_type}}?
+          cached = get_cached_association({{name.id.stringify}})
+          return cached.as({{class_type}}?) if cached
+
+          foreign_key_value = get_attribute({{foreign_key_str}})
+          return nil unless foreign_key_value
+
+          record = {{class_type}}.find(foreign_key_value)
+          cache_association({{name.id.stringify}}, record) if record
+          record
+        rescue
+          nil
+        end
+
+        # Define loaded? method to check if association is loaded
+        def {{name.id}}_loaded?
+          association_loaded?({{name.id.stringify}})
+        end
+
+        # Define load method to force load the association
+        def load_{{name.id}}
+          self.{{name.id}}
         end
 
         # Define the setter method
@@ -790,8 +810,28 @@ module Takarik::Data
                      {{foreign_key_str}}, {{primary_key_str}}, {{dependent}}, false)
 
       # Define the getter method
-      def {{name.id}}
-        Takarik::Data::AssociationProxy.new(self, {{name.id.stringify}})
+      def {{name.id}} : {{class_type}}?
+        cached = get_cached_association({{name.id.stringify}})
+        return cached.as({{class_type}}?) if cached
+
+        primary_key_value = get_attribute({{primary_key_str}})
+        return nil unless primary_key_value
+
+        record = {{class_type}}.where({{foreign_key_str}}: primary_key_value).first?
+        cache_association({{name.id.stringify}}, record) if record
+        record
+      rescue
+        nil
+      end
+
+      # Define loaded? method to check if association is loaded
+      def {{name.id}}_loaded?
+        association_loaded?({{name.id.stringify}})
+      end
+
+      # Define load method to force load the association
+      def load_{{name.id}}
+        self.{{name.id}}
       end
 
       # Define the setter method

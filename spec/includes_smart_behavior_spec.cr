@@ -105,7 +105,7 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
 
     # Check associations are loaded
     books_default.each do |book|
-      book.author_smart.loaded?.should be_true
+      book.author_smart_loaded?.should be_true
     end
 
     authors_with_conditions.each do |author|
@@ -113,7 +113,7 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
     end
 
     books_regular_where.each do |book|
-      book.author_smart.loaded?.should be_true
+      book.author_smart_loaded?.should be_true
     end
 
 

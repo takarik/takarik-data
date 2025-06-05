@@ -79,7 +79,7 @@ describe "ActiveRecord Preload Specification" do
     books = BookPL.preload(:author_pl).limit(10).to_a
 
     books.each_with_index do |book, index|
-      author = book.author_pl.target
+      author = book.author_pl
       if author
         last_name = author.last_name
       end
@@ -87,7 +87,7 @@ describe "ActiveRecord Preload Specification" do
 
     # Verify preload worked
     books.each do |book|
-      book.author_pl.loaded?.should be_true
+      book.author_pl_loaded?.should be_true
     end
 
     # Test includes (1 query with JOIN)
@@ -97,6 +97,6 @@ describe "ActiveRecord Preload Specification" do
     books_n1 = BookPL.limit(10).to_a
 
     books.size.should eq(10)
-    books.all? { |book| book.author_pl.loaded? }.should be_true
+    books.all? { |book| book.author_pl_loaded? }.should be_true
   end
 end

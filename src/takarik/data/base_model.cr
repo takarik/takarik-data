@@ -2093,45 +2093,4 @@ module Takarik::Data
       run_after_rollback_callbacks
     end
   end
-
-  # Association proxy that provides loaded? and load() methods
-  class AssociationProxy
-    @owner : BaseModel
-    @association_name : String
-    @target : (BaseModel | Nil)?
-    @loaded : Bool
-
-    def initialize(@owner : BaseModel, @association_name : String)
-      @loaded = @owner.association_loaded?(@association_name)
-      @target = @owner.get_cached_association(@association_name) if @loaded
-    end
-
-    def loaded?
-      @loaded
-    end
-
-    def load
-      return if @loaded
-      @owner.load(@association_name)
-      @loaded = true
-      @target = @owner.get_cached_association(@association_name)
-    end
-
-    def target
-      load() unless @loaded
-      @target
-    end
-
-    # Forward all method calls to the underlying model via get_attribute
-    macro method_missing(call)
-      {% method_name = call.name.stringify %}
-      load() unless @loaded
-      if @target
-        # Try to get the attribute value
-        @target.not_nil!.get_attribute({{method_name}})
-      else
-        nil
-      end
-    end
-  end
 end

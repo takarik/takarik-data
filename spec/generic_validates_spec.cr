@@ -194,7 +194,7 @@ describe "Generic Validates Macro" do
       model.valid?.should be_true
 
       # Test string that's not a valid integer
-      model.score = "100.5"
+      model.set_attribute("score", "100.5")
       model.valid?.should be_false
       model.errors["score"].should contain("must be an integer")
     end

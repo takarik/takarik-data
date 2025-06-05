@@ -31,12 +31,12 @@ describe "Includes (Eager Loading)" do
       loaded_post.title.should eq("Test Post")
 
       # The association should be loaded from cache
-      loaded_post.user.loaded?.should be_true
+      loaded_post.user_loaded?.should be_true
 
       # Accessing the user should not trigger another query
       associated_user = loaded_post.user
       associated_user.should_not be_nil
-      associated_user.name.should eq("John Doe")
+      associated_user.not_nil!.name.should eq("John Doe")
     end
 
     it "should handle multiple includes" do
@@ -63,9 +63,9 @@ describe "Includes (Eager Loading)" do
       posts.size.should eq(1)
 
       loaded_post = posts.first
-      loaded_post.user.loaded?.should be_true
+      loaded_post.user_loaded?.should be_true
       # Skip nil comparison for now
-      loaded_post.user.target.should be_nil
+      loaded_post.user.should be_nil
     end
   end
 
@@ -85,10 +85,10 @@ describe "Includes (Eager Loading)" do
 
       # Accessing users should not trigger additional queries since they're cached
       posts.each do |post|
-        post.user.loaded?.should be_true
+        post.user_loaded?.should be_true
         user = post.user
         user.should_not be_nil
-        user.name.should_not be_nil
+        user.not_nil!.name.should_not be_nil
       end
     end
   end
@@ -105,22 +105,22 @@ describe "Includes (Eager Loading)" do
       loaded_post = loaded_post.not_nil!
 
       # Association should not be loaded initially
-      loaded_post.user.loaded?.should be_false
+      loaded_post.user_loaded?.should be_false
 
       # Explicitly load the association
-      loaded_post.user.load
+      loaded_post.load_user
 
       # Now it should be loaded
-      loaded_post.user.loaded?.should be_true
+      loaded_post.user_loaded?.should be_true
 
       # Accessing the user should not trigger another query
       associated_user = loaded_post.user
       associated_user.should_not be_nil
-      associated_user.name.should eq("John Doe")
+      associated_user.not_nil!.name.should eq("John Doe")
 
       # Calling load again should do nothing (no error)
-      loaded_post.user.load
-      loaded_post.user.loaded?.should be_true
+      loaded_post.load_user
+      loaded_post.user_loaded?.should be_true
     end
   end
 end

@@ -74,8 +74,11 @@ describe "ActiveRecord Includes Specification Tests" do
       # Verify data integrity
       author_names = [] of String
       books_loaded.each_with_index do |book, index|
-        author_name = book.author.last_name
-        author_names << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name
+          author_names << author_name.to_s if author_name
+        end
       end
 
       # Assertions
@@ -131,8 +134,11 @@ describe "ActiveRecord Includes Specification Tests" do
       books_n1 = BookSpec.limit(25).to_a
       author_names_n1 = [] of String
       books_n1.each do |book|
-        author_name = book.author.last_name # This triggers individual queries
-        author_names_n1 << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name # This triggers individual queries
+          author_names_n1 << author_name.to_s if author_name
+        end
       end
       end_time = Time.utc
       n1_time = (end_time - start_time).total_milliseconds
@@ -143,8 +149,11 @@ describe "ActiveRecord Includes Specification Tests" do
       books_includes = BookSpec.includes(:author).limit(25).to_a
       author_names_includes = [] of String
       books_includes.each do |book|
-        author_name = book.author.last_name # This uses cached/joined data
-        author_names_includes << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name # This uses cached/joined data
+          author_names_includes << author_name.to_s if author_name
+        end
       end
       end_time = Time.utc
       includes_time = (end_time - start_time).total_milliseconds

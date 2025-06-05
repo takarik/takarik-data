@@ -28,7 +28,6 @@ end
 
 describe "Preload vs Includes vs N+1 Comparison" do
   it "should demonstrate all three approaches according to ActiveRecord specification" do
-
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_comparison")
     Takarik::Data.connection.exec(<<-SQL
@@ -75,8 +74,6 @@ describe "Preload vs Includes vs N+1 Comparison" do
       )
     end
 
-
-
     # 1. N+1 Problem demonstration
 
     books_n1 = BookComparison.limit(10).to_a
@@ -96,18 +93,13 @@ describe "Preload vs Includes vs N+1 Comparison" do
     books_inc.size.should eq(books_pre.size)
 
     books_pre.each do |book|
-      book.author_comparison.loaded?.should be_true
+      book.author_comparison_loaded?.should be_true
     end
 
     books_inc.each do |book|
-      book.author_comparison.loaded?.should be_true
+      book.author_comparison_loaded?.should be_true
     end
 
-
     # Performance comparison
-
-
-
-
   end
 end

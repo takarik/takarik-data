@@ -103,9 +103,9 @@ describe "Complete ActiveRecord Eager Loading Comparison" do
     books_pre.size.should eq(books_eager.size)
 
     # Check that associations are loaded for eager loading methods
-    books_inc.all? { |book| book.author_all.loaded? }.should be_true
-    books_pre.all? { |book| book.author_all.loaded? }.should be_true
-    books_eager.all? { |book| book.author_all.loaded? }.should be_true
+    books_inc.all? { |book| book.author_all_loaded? }.should be_true
+    books_pre.all? { |book| book.author_all_loaded? }.should be_true
+    books_eager.all? { |book| book.author_all_loaded? }.should be_true
 
 
     # Performance summary

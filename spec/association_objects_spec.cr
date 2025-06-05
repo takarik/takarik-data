@@ -48,7 +48,7 @@ describe "Association Objects Support" do
 
       post.persisted?.should be_true
       post.user_id.should eq(user.id)
-      post.user.name.should eq("Charlie")
+      post.user.not_nil!.name.should eq("Charlie")
       post.title.should eq("Mixed Post")
       post.content.should eq("Some content")
       post.published.should be_true

@@ -531,7 +531,8 @@ module Takarik::Data
 
     def to_sql
       # First, determine if includes should use JOIN strategy
-      use_join_for_includes = @includes.any? && has_association_conditions?
+      # Always use JOINs for includes to match ActiveRecord behavior
+      use_join_for_includes = @includes.any?
 
       # Add JOINs for includes if needed
       if use_join_for_includes && !@has_joins
@@ -617,8 +618,8 @@ module Takarik::Data
     def to_a
       results = [] of T
 
-      # Check if includes should use JOIN strategy (when conditions reference associations)
-      use_join_for_includes = @includes.any? && has_association_conditions?
+      # Check if includes should use JOIN strategy - always true for includes
+      use_join_for_includes = @includes.any?
 
       @model_class.connection.query(to_sql, args: combined_params) do |rs|
         rs.each do
@@ -634,11 +635,6 @@ module Takarik::Data
           end
           results << instance
         end
-      end
-
-      # Handle includes with separate queries (default behavior)
-      if @includes.any? && !use_join_for_includes
-        perform_preloading_for_includes(results)
       end
 
       # Handle preloading with separate queries after main query

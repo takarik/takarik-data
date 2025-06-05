@@ -41,8 +41,11 @@ describe "N+1 Query Problem Demonstration" do
              # 2. Each iteration will cause a separate query to get the author (N queries)
        author_names = [] of String
        books.each_with_index do |book, index|
-         author_name = book.author.name
-         author_names << author_name.to_s if author_name
+         author = book.author
+         if author
+           author_name = author.name
+           author_names << author_name.to_s if author_name
+         end
        end
 
 
@@ -78,8 +81,11 @@ describe "N+1 Query Problem Demonstration" do
       author_names = [] of String
       books.each_with_index do |book, index|
         # Check if the association is loaded
-        author_name = book.author.name
-        author_names << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.name
+          author_names << author_name.to_s if author_name
+        end
       end
 
 
@@ -184,8 +190,16 @@ describe "N+1 Query Problem Demonstration" do
       books_efficient.size.should eq(10)
 
       # Both should produce the same output
-      inefficient_output = books_inefficient.map { |book| "#{book.title} by #{book.author.name}" }
-      efficient_output = books_efficient.map { |book| "#{book.title} by #{book.author.name}" }
+      inefficient_output = books_inefficient.map { |book|
+        author = book.author
+        author_name = author ? author.name : "Unknown"
+        "#{book.title} by #{author_name}"
+      }
+      efficient_output = books_efficient.map { |book|
+        author = book.author
+        author_name = author ? author.name : "Unknown"
+        "#{book.title} by #{author_name}"
+      }
 
       inefficient_output.should eq(efficient_output)
     end

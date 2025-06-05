@@ -129,8 +129,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       # Access authors and verify behavior
       author_names = [] of String
       books_loaded.each_with_index do |book, index|
-        author_name = book.author.last_name
-        author_names << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name
+          author_names << author_name.to_s if author_name
+        end
       end
 
       # Verify we got the expected data
@@ -204,8 +207,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       books_n1 = BookAdvanced.limit(15).to_a
       author_names_n1 = [] of String
       books_n1.each do |book|
-        author_name = book.author.last_name
-        author_names_n1 << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name
+          author_names_n1 << author_name.to_s if author_name
+        end
       end
 
 
@@ -214,8 +220,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       books_includes = BookAdvanced.includes(:author).limit(15).to_a
       author_names_includes = [] of String
       books_includes.each do |book|
-        author_name = book.author.last_name
-        author_names_includes << author_name.to_s if author_name
+        author = book.author
+        if author
+          author_name = author.last_name
+          author_names_includes << author_name.to_s if author_name
+        end
       end
 
 
