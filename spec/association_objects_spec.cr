@@ -48,7 +48,7 @@ describe "Association Objects Support" do
 
       post.persisted?.should be_true
       post.user_id.should eq(user.id)
-      post.user.try(&.name).should eq("Charlie")
+      post.user.name.should eq("Charlie")
       post.title.should eq("Mixed Post")
       post.content.should eq("Some content")
       post.published.should be_true
@@ -78,7 +78,7 @@ describe "Association Objects Support" do
       task = Task.new
       task.title = "Test Task"
       task.project = project
-      task.assignee = nil  # This should be allowed
+      task.assignee = nil # This should be allowed
 
       result = task.save
       result.should be_true

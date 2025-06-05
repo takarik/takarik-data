@@ -12,6 +12,7 @@ module Takarik::Data
     @limit_value : Int32?
     @offset_value : Int32?
     @has_joins = false
+    @includes = [] of String
 
     def initialize(@model_class : T.class)
     end
@@ -312,6 +313,24 @@ module Takarik::Data
     end
 
     # ========================================
+    # INCLUDES METHODS (Eager Loading)
+    # ========================================
+
+    def includes(*association_names : String | Symbol)
+      association_names.each do |association_name|
+        add_includes(association_name.to_s)
+      end
+      self
+    end
+
+    def includes(association_names : Array(String | Symbol))
+      association_names.each do |association_name|
+        add_includes(association_name.to_s)
+      end
+      self
+    end
+
+    # ========================================
     # ORDER METHODS
     # ========================================
 
@@ -341,13 +360,13 @@ module Takarik::Data
     def order(**columns)
       columns.each do |column, direction|
         direction_str = case direction
-                       when Symbol
-                         direction.to_s.upcase
-                       when String
-                         direction.upcase
-                       else
-                         direction.to_s.upcase
-                       end
+                        when Symbol
+                          direction.to_s.upcase
+                        when String
+                          direction.upcase
+                        else
+                          direction.to_s.upcase
+                        end
         @order_clauses << "#{column} #{direction_str}"
       end
       self
@@ -549,7 +568,9 @@ module Takarik::Data
       @model_class.connection.query(to_sql, args: combined_params) do |rs|
         rs.each do
           instance = @model_class.new
-          if @has_joins
+          if @includes.any?
+            instance.load_from_result_set_with_includes(rs, @includes)
+          elsif @has_joins
             instance.load_from_prefixed_result_set(rs)
           else
             instance.load_from_result_set(rs)
@@ -896,20 +917,47 @@ module Takarik::Data
 
       # Choose join type based on association configuration
       join_type = case association.type
-      when .belongs_to?
-        # For belongs_to associations, use the optional parameter to determine join type
-        association.optional ? "LEFT JOIN" : "INNER JOIN"
-      when .has_many?, .has_one?
-        # For has_many/has_one, typically use LEFT JOIN since the parent might not have children
-        "LEFT JOIN"
-      else
-        raise "Unknown association type: #{association.type}"
-      end
+                  when .belongs_to?
+                    # For belongs_to associations, use the optional parameter to determine join type
+                    association.optional ? "LEFT JOIN" : "INNER JOIN"
+                  when .has_many?, .has_one?
+                    # For has_many/has_one, typically use LEFT JOIN since the parent might not have children
+                    "LEFT JOIN"
+                  else
+                    raise "Unknown association type: #{association.type}"
+                  end
 
       add_association_join(join_type, association_name)
     end
 
+    private def add_includes(association_name : String)
+      # Validate the association exists
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+
+      unless association
+        raise "Association '#{association_name}' not found for #{@model_class.name}"
+      end
+
+      # Skip polymorphic associations as they can't be eagerly loaded
+      if association.polymorphic
+        raise "Cannot eagerly load polymorphic association '#{association_name}'"
+      end
+
+      # Don't add duplicate includes
+      return if @includes.includes?(association_name)
+
+      @includes << association_name
+      @has_joins = true
+
+      # Add a LEFT JOIN for the association
+      add_association_join("LEFT JOIN", association_name)
+    end
+
     private def get_prefixed_columns
+      all_columns = [] of String
+
+      # Main table columns
       table_name = @model_class.table_name
       table_name_clean = table_name.gsub("\"", "")
 
@@ -918,7 +966,30 @@ module Takarik::Data
         columns = ["id", "created_at", "updated_at"]
       end
 
-      columns.map { |col| "#{table_name_clean}.#{col} AS #{table_name_clean}_#{col}" }.join(", ")
+      columns.each do |col|
+        all_columns << "#{table_name_clean}.#{col} AS #{table_name_clean}_#{col}"
+      end
+
+      # Include columns from associated tables when using includes
+      @includes.each do |association_name|
+        associations = @model_class.associations
+        association = associations.find { |a| a.name == association_name }
+        next unless association && association.class_type && !association.polymorphic
+
+        associated_table = association.class_type.not_nil!.table_name
+        associated_table_clean = associated_table.gsub("\"", "")
+
+        associated_columns = association.class_type.not_nil!.column_names
+        if associated_columns.empty?
+          associated_columns = ["id", "created_at", "updated_at"]
+        end
+
+        associated_columns.each do |col|
+          all_columns << "#{associated_table_clean}.#{col} AS #{associated_table_clean}_#{col}"
+        end
+      end
+
+      all_columns.join(", ")
     end
 
     private def aggregate(function : String, column : String)

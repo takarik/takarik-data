@@ -90,9 +90,9 @@ module Takarik::Data
 
     module ClassMethods
       def add_association(name : String, type : AssociationType, class_type : (BaseModel.class)?,
-                             foreign_key : String, primary_key : String, dependent : Symbol?, optional : Bool,
-                             through : String? = nil, join_table : String? = nil, polymorphic : Bool = false,
-                             as_name : String? = nil, polymorphic_type : String? = nil)
+                          foreign_key : String, primary_key : String, dependent : Symbol?, optional : Bool,
+                          through : String? = nil, join_table : String? = nil, polymorphic : Bool = false,
+                          as_name : String? = nil, polymorphic_type : String? = nil)
         @@associations[self.name] ||= [] of Association
         @@associations[self.name] << Association.new(name, type, class_type, foreign_key, primary_key, dependent, optional, through, join_table, polymorphic, as_name, polymorphic_type)
       end
@@ -414,10 +414,7 @@ module Takarik::Data
 
         # Define the getter method
         def {{name.id}}
-          foreign_key_value = get_attribute({{foreign_key_str}})
-          return nil unless foreign_key_value
-
-          {{class_type}}.find(foreign_key_value)
+          Takarik::Data::AssociationProxy.new(self, {{name.id.stringify}})
         end
 
         # Define the setter method
@@ -434,6 +431,9 @@ module Takarik::Data
               set_attribute({{foreign_key_str}}, nil)
             {% end %}
           end
+
+          # Update the cache when setting the association
+          cache_association({{name.id.stringify}}, record)
           record
         end
 
@@ -791,12 +791,7 @@ module Takarik::Data
 
       # Define the getter method
       def {{name.id}}
-        primary_key_value = get_attribute({{primary_key_str}})
-        return nil unless primary_key_value
-
-        conditions = Hash(String, DB::Any).new
-        conditions[{{foreign_key_str}}] = primary_key_value
-        {{class_type}}.where(conditions).first
+        Takarik::Data::AssociationProxy.new(self, {{name.id.stringify}})
       end
 
       # Define the setter method
@@ -813,6 +808,8 @@ module Takarik::Data
           record.set_attribute({{foreign_key_str}}, primary_key_value)
         end
 
+        # Update the cache when setting the association
+        cache_association({{name.id.stringify}}, record)
         record
       end
 
@@ -875,40 +872,40 @@ module Takarik::Data
         {% end %}
       {% else %}
         # Generate join table name from model names in alphabetical order using inline pluralization
-        {%
-          # Pluralize current class name
-          current_class_name = @type.name.split("::").last.underscore
-          if current_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| current_class_name.ends_with?(ending) }
-            current_table = current_class_name[0..-2] + "ies"
-          elsif current_class_name.ends_with?("s") || current_class_name.ends_with?("sh") || current_class_name.ends_with?("ch") || current_class_name.ends_with?("x") || current_class_name.ends_with?("z")
-            current_table = current_class_name + "es"
-          elsif current_class_name.ends_with?("f")
-            current_table = current_class_name[0..-2] + "ves"
-          elsif current_class_name.ends_with?("fe")
-            current_table = current_class_name[0..-3] + "ves"
-          else
-            current_table = current_class_name + "s"
-          end
+        {% # Pluralize current class name
 
-          # Pluralize target class name
-          target_class_name = class_type.stringify.underscore
-          if target_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| target_class_name.ends_with?(ending) }
-            target_table = target_class_name[0..-2] + "ies"
-          elsif target_class_name.ends_with?("s") || target_class_name.ends_with?("sh") || target_class_name.ends_with?("ch") || target_class_name.ends_with?("x") || target_class_name.ends_with?("z")
-            target_table = target_class_name + "es"
-          elsif target_class_name.ends_with?("f")
-            target_table = target_class_name[0..-2] + "ves"
-          elsif target_class_name.ends_with?("fe")
-            target_table = target_class_name[0..-3] + "ves"
-          else
-            target_table = target_class_name + "s"
-          end
+current_class_name = @type.name.split("::").last.underscore
+if current_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| current_class_name.ends_with?(ending) }
+  current_table = current_class_name[0..-2] + "ies"
+elsif current_class_name.ends_with?("s") || current_class_name.ends_with?("sh") || current_class_name.ends_with?("ch") || current_class_name.ends_with?("x") || current_class_name.ends_with?("z")
+  current_table = current_class_name + "es"
+elsif current_class_name.ends_with?("f")
+  current_table = current_class_name[0..-2] + "ves"
+elsif current_class_name.ends_with?("fe")
+  current_table = current_class_name[0..-3] + "ves"
+else
+  current_table = current_class_name + "s"
+end
 
-          if current_table < target_table
-            join_table_str = current_table + "_" + target_table
-          else
-            join_table_str = target_table + "_" + current_table
-          end
+# Pluralize target class name
+target_class_name = class_type.stringify.underscore
+if target_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| target_class_name.ends_with?(ending) }
+  target_table = target_class_name[0..-2] + "ies"
+elsif target_class_name.ends_with?("s") || target_class_name.ends_with?("sh") || target_class_name.ends_with?("ch") || target_class_name.ends_with?("x") || target_class_name.ends_with?("z")
+  target_table = target_class_name + "es"
+elsif target_class_name.ends_with?("f")
+  target_table = target_class_name[0..-2] + "ves"
+elsif target_class_name.ends_with?("fe")
+  target_table = target_class_name[0..-3] + "ves"
+else
+  target_table = target_class_name + "s"
+end
+
+if current_table < target_table
+  join_table_str = current_table + "_" + target_table
+else
+  join_table_str = target_table + "_" + current_table
+end
         %}
       {% end %}
 

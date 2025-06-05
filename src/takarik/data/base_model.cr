@@ -42,6 +42,8 @@ module Takarik::Data
     @persisted = false
     @changed_attributes = Set(String).new
     @_last_action : Symbol?
+    @association_cache = {} of String => (BaseModel | Nil)
+    @loaded_associations = Set(String).new
 
     # ========================================
     # CLASS METHODS - CONFIGURATION
@@ -239,6 +241,14 @@ module Takarik::Data
       all.right_join(association_name)
     end
 
+    def self.includes(*association_names : String | Symbol)
+      all.includes(*association_names)
+    end
+
+    def self.includes(association_names : Array(String | Symbol))
+      all.includes(association_names)
+    end
+
     def self.group(*columns : String)
       all.group(*columns)
     end
@@ -370,6 +380,102 @@ module Takarik::Data
 
     def to_h
       @attributes.dup
+    end
+
+    # ========================================
+    # INSTANCE METHODS - ASSOCIATION CACHE
+    # ========================================
+
+    def association_loaded?(association_name : String)
+      @association_cache.has_key?(association_name)
+    end
+
+    def get_cached_association(association_name : String)
+      @association_cache[association_name]?
+    end
+
+    def cache_association(association_name : String, value : (BaseModel | Nil))
+      @association_cache[association_name] = value
+      @loaded_associations.add(association_name)
+    end
+
+    def association_loaded?(association_name : String)
+      @loaded_associations.includes?(association_name)
+    end
+
+    def loaded?(association_name : String | Symbol)
+      @loaded_associations.includes?(association_name.to_s)
+    end
+
+    def load(association_name : String | Symbol)
+      association_name_str = association_name.to_s
+      return if loaded?(association_name_str)
+
+      # Find the association definition
+      associations = self.class.associations
+      association = associations.find { |a| a.name == association_name_str }
+
+      unless association
+        raise "Association '#{association_name_str}' not found for #{self.class.name}"
+      end
+
+      # Load the association based on its type
+      case association.type
+      when .belongs_to?
+        load_belongs_to_association(association)
+      when .has_one?
+        load_has_one_association(association)
+      when .has_many?
+        load_has_many_association(association)
+      else
+        raise "Cannot explicitly load association type: #{association.type}"
+      end
+    end
+
+    private def load_belongs_to_association(association)
+      return unless association.class_type
+
+      foreign_key_value = get_attribute(association.foreign_key)
+      if foreign_key_value
+        result = association.class_type.not_nil!.find(foreign_key_value)
+        cache_association(association.name, result)
+      else
+        cache_association(association.name, nil)
+      end
+    end
+
+    private def load_has_one_association(association)
+      return unless association.class_type
+
+      primary_key_value = get_attribute(association.primary_key)
+      if primary_key_value
+        conditions = Hash(String, DB::Any).new
+        conditions[association.foreign_key] = primary_key_value
+        result = association.class_type.not_nil!.where(conditions).first
+        cache_association(association.name, result)
+      else
+        cache_association(association.name, nil)
+      end
+    end
+
+    private def load_has_many_association(association)
+      return unless association.class_type
+
+      primary_key_value = get_attribute(association.primary_key)
+      if primary_key_value
+        conditions = Hash(String, DB::Any).new
+        conditions[association.foreign_key] = primary_key_value
+        results = association.class_type.not_nil!.where(conditions).to_a
+        # For has_many, we just mark as loaded but don't cache the array
+        cache_association(association.name, nil)
+      else
+        cache_association(association.name, nil)
+      end
+    end
+
+    def mark_as_persisted
+      @persisted = true
+      @changed_attributes.clear
     end
 
     # ========================================
@@ -865,6 +971,76 @@ module Takarik::Data
 
       # Run after_find callbacks since we loaded from database
       run_after_find_callbacks
+    end
+
+    protected def load_from_result_set_with_includes(rs : DB::ResultSet, includes : Array(String))
+      table_prefix = "#{self.class.table_name.gsub("\"", "")}_"
+
+      # Read all values at once
+      all_values = [] of DB::Any
+      rs.column_names.each do |column_name|
+        all_values << rs.read
+      end
+
+      # Process main model attributes
+      rs.column_names.each_with_index do |column_name, index|
+        value = all_values[index]
+
+        # Only process columns that belong to this table (have the correct prefix)
+        if column_name.starts_with?(table_prefix)
+          # Remove the table prefix to get the actual column name
+          actual_column_name = column_name[table_prefix.size..-1]
+          @attributes[actual_column_name] = value
+        end
+      end
+
+      # Process associated models
+      includes.each do |association_name|
+        load_association_from_values(rs.column_names, all_values, association_name)
+      end
+
+      sync_instance_variables_from_attributes
+      @persisted = true
+      @changed_attributes.clear
+
+      # Run after_find callbacks since we loaded from database
+      run_after_find_callbacks
+    end
+
+    private def load_association_from_values(column_names : Array(String), values : Array(DB::Any), association_name : String)
+      associations = self.class.associations
+      association = associations.find { |a| a.name == association_name }
+      return unless association && association.class_type && !association.polymorphic
+
+      associated_table = association.class_type.not_nil!.table_name
+      associated_table_clean = associated_table.gsub("\"", "")
+      associated_prefix = "#{associated_table_clean}_"
+
+      # Check if the association's primary key is not null (indicating a real association)
+      primary_key_column = "#{associated_prefix}#{association.primary_key}"
+      primary_key_index = column_names.index(primary_key_column)
+
+      if primary_key_index && values[primary_key_index] && !values[primary_key_index].nil?
+        # Create and populate the associated instance
+        associated_instance = association.class_type.not_nil!.new
+
+        column_names.each_with_index do |column_name, index|
+          if column_name.starts_with?(associated_prefix)
+            # Remove the table prefix to get the actual column name
+            actual_column_name = column_name[associated_prefix.size..-1]
+            associated_instance.set_attribute(actual_column_name, values[index])
+          end
+        end
+
+        # Mark as persisted since it came from the database
+        associated_instance.mark_as_persisted
+
+        # Cache the association
+        cache_association(association_name, associated_instance)
+      else
+        # No associated record, cache nil
+        cache_association(association_name, nil)
+      end
     end
 
     # ========================================
@@ -1733,7 +1909,7 @@ module Takarik::Data
       {% begin %}
         case column_name
         {% for ivar in @type.instance_vars %}
-          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action"] %}
+          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action", "association_cache", "loaded_associations"] %}
           {% unless excluded_vars.includes?(ivar.name.stringify) %}
             when {{ivar.name.stringify}}
               # Extract the type from the instance variable type and do direct assignment
@@ -1897,6 +2073,47 @@ module Takarik::Data
     private def execute_rollback_callbacks(action : Symbol)
       @_last_action = action
       run_after_rollback_callbacks
+    end
+  end
+
+  # Association proxy that provides loaded? and load() methods
+  class AssociationProxy
+    @owner : BaseModel
+    @association_name : String
+    @target : (BaseModel | Nil)?
+    @loaded : Bool
+
+    def initialize(@owner : BaseModel, @association_name : String)
+      @loaded = @owner.association_loaded?(@association_name)
+      @target = @owner.get_cached_association(@association_name) if @loaded
+    end
+
+    def loaded?
+      @loaded
+    end
+
+    def load
+      return if @loaded
+      @owner.load(@association_name)
+      @loaded = true
+      @target = @owner.get_cached_association(@association_name)
+    end
+
+    def target
+      load() unless @loaded
+      @target
+    end
+
+    # Forward all method calls to the underlying model via get_attribute
+    macro method_missing(call)
+      {% method_name = call.name.stringify %}
+      load() unless @loaded
+      if @target
+        # Try to get the attribute value
+        @target.not_nil!.get_attribute({{method_name}})
+      else
+        nil
+      end
     end
   end
 end
