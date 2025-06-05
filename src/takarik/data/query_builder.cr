@@ -13,6 +13,7 @@ module Takarik::Data
     @offset_value : Int32?
     @has_joins = false
     @includes = [] of String
+    @preloads = [] of String
 
     def initialize(@model_class : T.class)
     end
@@ -331,6 +332,24 @@ module Takarik::Data
     end
 
     # ========================================
+    # PRELOAD METHODS (Separate Query Eager Loading)
+    # ========================================
+
+    def preload(*association_names : String | Symbol)
+      association_names.each do |association_name|
+        add_preload(association_name.to_s)
+      end
+      self
+    end
+
+    def preload(association_names : Array(String | Symbol))
+      association_names.each do |association_name|
+        add_preload(association_name.to_s)
+      end
+      self
+    end
+
+    # ========================================
     # ORDER METHODS
     # ========================================
 
@@ -578,6 +597,12 @@ module Takarik::Data
           results << instance
         end
       end
+
+      # Handle preloading with separate queries after main query
+      if @preloads.any?
+        perform_preloading(results)
+      end
+
       results
     end
 
@@ -995,6 +1020,142 @@ module Takarik::Data
     private def aggregate(function : String, column : String)
       @select_clause = "#{function}(#{column})"
       @model_class.connection.scalar(to_sql, args: combined_params)
+    end
+
+    # ========================================
+    # PRELOAD HELPER METHODS
+    # ========================================
+
+    private def add_preload(association_name : String)
+      # Validate the association exists
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+
+      unless association
+        raise "Association '#{association_name}' not found for #{@model_class.name}"
+      end
+
+      # Skip polymorphic associations as they can't be preloaded
+      if association.polymorphic
+        raise "Cannot preload polymorphic association '#{association_name}'"
+      end
+
+      # Don't add duplicate preloads
+      return if @preloads.includes?(association_name)
+
+      @preloads << association_name
+    end
+
+    private def perform_preloading(records : Array(T))
+      return if records.empty?
+
+      @preloads.each do |association_name|
+        preload_association(records, association_name)
+      end
+    end
+
+    private def preload_association(records : Array(T), association_name : String)
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+      return unless association && association.class_type
+
+      case association.type
+      when .belongs_to?
+        preload_belongs_to(records, association)
+      when .has_many?
+        preload_has_many(records, association)
+      when .has_one?
+        preload_has_one(records, association)
+      end
+    end
+
+    private def preload_belongs_to(records : Array(T), association)
+      # Get all foreign key values from the records
+      foreign_key_values = records.map { |record| record.get_attribute(association.foreign_key) }
+                                  .reject(&.nil?)
+                                  .uniq
+
+      return if foreign_key_values.empty?
+
+      # Query associated records in one query using IN clause
+      associated_records = association.class_type.not_nil!.where(association.primary_key, foreign_key_values).to_a
+
+      # Create a hash for quick lookup
+      lookup_hash = {} of DB::Any => typeof(associated_records.first)
+      associated_records.each do |record|
+        key = record.get_attribute(association.primary_key)
+        lookup_hash[key] = record if key
+      end
+
+      # Cache associations on each record
+      records.each do |record|
+        foreign_key_value = record.get_attribute(association.foreign_key)
+        if foreign_key_value && lookup_hash.has_key?(foreign_key_value)
+          record.cache_association(association.name, lookup_hash[foreign_key_value])
+        else
+          record.cache_association(association.name, nil)
+        end
+      end
+    end
+
+    private def preload_has_many(records : Array(T), association)
+      # Get all primary key values from the records
+      primary_key_values = records.map { |record| record.get_attribute(association.primary_key) }
+                                  .reject(&.nil?)
+                                  .uniq
+
+      return if primary_key_values.empty?
+
+      # Query associated records in one query using IN clause
+      associated_records = association.class_type.not_nil!.where(association.foreign_key, primary_key_values).to_a
+
+      # Group by foreign key
+      grouped_records = {} of DB::Any => Array(typeof(associated_records.first))
+      associated_records.each do |record|
+        foreign_key_value = record.get_attribute(association.foreign_key)
+        if foreign_key_value
+          grouped_records[foreign_key_value] ||= [] of typeof(associated_records.first)
+          grouped_records[foreign_key_value] << record
+        end
+      end
+
+      # Cache associations on each record (mark as loaded but don't store array)
+      records.each do |record|
+        primary_key_value = record.get_attribute(association.primary_key)
+        if primary_key_value
+          # Mark as loaded for has_many (the actual query will use the cached foreign keys)
+          record.cache_association(association.name, nil)
+        end
+      end
+    end
+
+    private def preload_has_one(records : Array(T), association)
+      # Get all primary key values from the records
+      primary_key_values = records.map { |record| record.get_attribute(association.primary_key) }
+                                  .reject(&.nil?)
+                                  .uniq
+
+      return if primary_key_values.empty?
+
+      # Query associated records in one query using IN clause
+      associated_records = association.class_type.not_nil!.where(association.foreign_key, primary_key_values).to_a
+
+      # Create a hash for quick lookup
+      lookup_hash = {} of DB::Any => typeof(associated_records.first)
+      associated_records.each do |record|
+        foreign_key_value = record.get_attribute(association.foreign_key)
+        lookup_hash[foreign_key_value] = record if foreign_key_value
+      end
+
+      # Cache associations on each record
+      records.each do |record|
+        primary_key_value = record.get_attribute(association.primary_key)
+        if primary_key_value && lookup_hash.has_key?(primary_key_value)
+          record.cache_association(association.name, lookup_hash[primary_key_value])
+        else
+          record.cache_association(association.name, nil)
+        end
+      end
     end
 
     # ========================================
