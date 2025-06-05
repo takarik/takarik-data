@@ -78,7 +78,7 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
       author = i < 5 ? author1 : author2
       BookSmart.create(
         title: "Book #{i + 1}",
-        author_id: author.get_attribute("id"),
+        author_id: author.id,
         out_of_print: i % 3 == 0  # Every 3rd book is out of print
       )
     end

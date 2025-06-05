@@ -72,7 +72,7 @@ describe "Preload vs Includes vs N+1 Comparison" do
       author = i < 5 ? author1 : author2
       BookComparison.create(
         title: "Book #{i + 1}",
-        author_id: author.get_attribute("id")
+        author_id: author.id
       )
     end
 

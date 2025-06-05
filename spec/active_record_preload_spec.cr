@@ -72,7 +72,7 @@ describe "ActiveRecord Preload Specification" do
       author = i < 5 ? author1 : author2
       BookPL.create(
         title: "Book #{i + 1}",
-        author_id: author.get_attribute("id")
+        author_id: author.id
       )
     end
 
@@ -82,7 +82,7 @@ describe "ActiveRecord Preload Specification" do
     books.each_with_index do |book, index|
       author = book.author_pl.target
       if author
-        last_name = author.get_attribute("last_name")
+        last_name = author.last_name
       end
     end
 

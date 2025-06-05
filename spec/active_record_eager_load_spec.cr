@@ -72,7 +72,7 @@ describe "ActiveRecord Eager Load Specification" do
       author = i < 5 ? author1 : author2
       BookEL.create(
         title: "Book #{i + 1}",
-        author_id: author.get_attribute("id")
+        author_id: author.id
       )
     end
 
@@ -84,7 +84,7 @@ describe "ActiveRecord Eager Load Specification" do
     books.each_with_index do |book, index|
       author = book.author_el.target
       if author
-        last_name = author.get_attribute("last_name")
+        last_name = author.last_name
       end
     end
 

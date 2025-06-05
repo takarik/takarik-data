@@ -21,7 +21,7 @@ describe "Includes (Eager Loading)" do
     it "should load associated records" do
       # Create test data
       user = User.create(name: "John Doe", email: "john@example.com")
-      post = Post.create(title: "Test Post", content: "Test content", user_id: user.get_attribute("id"))
+      post = Post.create(title: "Test Post", content: "Test content", user_id: user.id)
 
       # Test includes
       posts = Post.includes(:user).to_a
@@ -52,9 +52,9 @@ describe "Includes (Eager Loading)" do
     it "should handle nil associations" do
       # Create a post without a user by bypassing validation
       post = Post.new
-      post.set_attribute("title", "Orphan Post")
-      post.set_attribute("content", "No user")
-      post.set_attribute("user_id", nil)
+      post.title = "Orphan Post"
+      post.content = "No user"
+      post.user_id = nil
       # Save without validation
       Post.connection.exec("INSERT INTO posts (title, content, user_id) VALUES (?, ?, ?)",
         "Orphan Post", "No user", nil)
@@ -75,9 +75,9 @@ describe "Includes (Eager Loading)" do
       user1 = User.create(name: "User 1", email: "user1@example.com")
       user2 = User.create(name: "User 2", email: "user2@example.com")
 
-      Post.create(title: "Post 1", content: "Content 1", user_id: user1.get_attribute("id"))
-      Post.create(title: "Post 2", content: "Content 2", user_id: user2.get_attribute("id"))
-      Post.create(title: "Post 3", content: "Content 3", user_id: user1.get_attribute("id"))
+      Post.create(title: "Post 1", content: "Content 1", user_id: user1.id)
+      Post.create(title: "Post 2", content: "Content 2", user_id: user2.id)
+      Post.create(title: "Post 3", content: "Content 3", user_id: user1.id)
 
       # Load posts with includes - should only execute one query
       posts = Post.includes(:user).to_a
@@ -97,10 +97,10 @@ describe "Includes (Eager Loading)" do
     it "should support loaded? and load() methods" do
       # Create test data
       user = User.create(name: "John Doe", email: "john@example.com")
-      post = Post.create(title: "Test Post", content: "Test content", user_id: user.get_attribute("id"))
+      post = Post.create(title: "Test Post", content: "Test content", user_id: user.id)
 
       # Load post without includes
-      loaded_post = Post.find(post.get_attribute("id"))
+      loaded_post = Post.find(post.id)
       loaded_post.should_not be_nil
       loaded_post = loaded_post.not_nil!
 
