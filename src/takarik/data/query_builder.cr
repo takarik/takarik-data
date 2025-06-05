@@ -1018,17 +1018,15 @@ module Takarik::Data
     private def get_prefixed_columns
       all_columns = [] of String
 
-      # Main table columns
-      table_name = @model_class.table_name
-      table_name_clean = table_name.gsub("\"", "")
-
       columns = @model_class.column_names
       if columns.empty?
         columns = ["id", "created_at", "updated_at"]
       end
 
+      table_name = @model_class.table_name
+
       columns.each do |col|
-        all_columns << "#{table_name_clean}.#{col} AS #{table_name_clean}_#{col}"
+        all_columns << "#{table_name}.#{col} AS #{table_name}_#{col}"
       end
 
       # Include columns from associated tables when using includes
@@ -1037,16 +1035,15 @@ module Takarik::Data
         association = associations.find { |a| a.name == association_name }
         next unless association && association.class_type && !association.polymorphic
 
-        associated_table = association.class_type.not_nil!.table_name
-        associated_table_clean = associated_table.gsub("\"", "")
-
         associated_columns = association.class_type.not_nil!.column_names
         if associated_columns.empty?
           associated_columns = ["id", "created_at", "updated_at"]
         end
 
+        associated_table = association.class_type.not_nil!.table_name
+
         associated_columns.each do |col|
-          all_columns << "#{associated_table_clean}.#{col} AS #{associated_table_clean}_#{col}"
+          all_columns << "#{associated_table}.#{col} AS #{associated_table}_#{col}"
         end
       end
 
@@ -1056,16 +1053,15 @@ module Takarik::Data
         association = associations.find { |a| a.name == association_name }
         next unless association && association.class_type && !association.polymorphic
 
-        associated_table = association.class_type.not_nil!.table_name
-        associated_table_clean = associated_table.gsub("\"", "")
-
         associated_columns = association.class_type.not_nil!.column_names
         if associated_columns.empty?
           associated_columns = ["id", "created_at", "updated_at"]
         end
 
+        associated_table = association.class_type.not_nil!.table_name
+
         associated_columns.each do |col|
-          all_columns << "#{associated_table_clean}.#{col} AS #{associated_table_clean}_#{col}"
+          all_columns << "#{associated_table}.#{col} AS #{associated_table}_#{col}"
         end
       end
 
@@ -1136,8 +1132,7 @@ module Takarik::Data
         association = associations.find { |a| a.name == association_name }
         if association && association.class_type && !association.polymorphic
           table_name = association.class_type.not_nil!.table_name
-          clean_table_name = table_name.gsub("\"", "")
-          association_tables.add(clean_table_name)
+          association_tables.add(table_name)
         end
       end
 
@@ -1182,8 +1177,8 @@ module Takarik::Data
     private def preload_belongs_to(records : Array(T), association)
       # Get all foreign key values from the records
       foreign_key_values = records.map { |record| record.get_attribute(association.foreign_key) }
-                                  .reject(&.nil?)
-                                  .uniq
+        .reject(&.nil?)
+        .uniq
 
       return if foreign_key_values.empty?
 
@@ -1211,8 +1206,8 @@ module Takarik::Data
     private def preload_has_many(records : Array(T), association)
       # Get all primary key values from the records
       primary_key_values = records.map { |record| record.get_attribute(association.primary_key) }
-                                  .reject(&.nil?)
-                                  .uniq
+        .reject(&.nil?)
+        .uniq
 
       return if primary_key_values.empty?
 
@@ -1242,8 +1237,8 @@ module Takarik::Data
     private def preload_has_one(records : Array(T), association)
       # Get all primary key values from the records
       primary_key_values = records.map { |record| record.get_attribute(association.primary_key) }
-                                  .reject(&.nil?)
-                                  .uniq
+        .reject(&.nil?)
+        .uniq
 
       return if primary_key_values.empty?
 

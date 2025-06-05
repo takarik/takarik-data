@@ -971,7 +971,7 @@ module Takarik::Data
     end
 
     protected def load_from_prefixed_result_set(rs : DB::ResultSet)
-      table_prefix = "#{self.class.table_name.gsub("\"", "")}_"
+      table_prefix = "#{self.class.table_name}_"
 
       rs.column_names.each_with_index do |column_name, index|
         value = rs.read
@@ -993,7 +993,7 @@ module Takarik::Data
     end
 
     protected def load_from_result_set_with_includes(rs : DB::ResultSet, includes : Array(String))
-      table_prefix = "#{self.class.table_name.gsub("\"", "")}_"
+      table_prefix = "#{self.class.table_name}_"
 
       # Read all values at once
       all_values = [] of DB::Any
@@ -1032,8 +1032,7 @@ module Takarik::Data
       return unless association && association.class_type && !association.polymorphic
 
       associated_table = association.class_type.not_nil!.table_name
-      associated_table_clean = associated_table.gsub("\"", "")
-      associated_prefix = "#{associated_table_clean}_"
+      associated_prefix = "#{associated_table}_"
 
       # Check if the association's primary key is not null (indicating a real association)
       primary_key_column = "#{associated_prefix}#{association.primary_key}"
