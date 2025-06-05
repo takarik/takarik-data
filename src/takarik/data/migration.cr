@@ -28,11 +28,11 @@ module Takarik::Data
     def create_table(name : String, &block)
       table_builder = TableBuilder.new(name)
       yield table_builder
-      connection.exec(table_builder.to_sql)
+      Takarik::Data.exec_with_logging(connection, table_builder.to_sql)
     end
 
     def drop_table(name : String)
-      connection.exec("DROP TABLE #{name}")
+      Takarik::Data.exec_with_logging(connection, "DROP TABLE #{name}")
     end
 
     # ========================================
@@ -42,19 +42,20 @@ module Takarik::Data
     def add_column(table : String, name : String, type : String, **options)
       sql = "ALTER TABLE #{table} ADD COLUMN #{name} #{type}"
 
-      if options[:null] == false
+      null_value = options[:null]?
+      if null_value == false
         sql += " NOT NULL"
       end
 
-      if default = options[:default]
+      if default = options[:default]?
         sql += " DEFAULT #{default}"
       end
 
-      connection.exec(sql)
+      Takarik::Data.exec_with_logging(connection, sql)
     end
 
     def remove_column(table : String, name : String)
-      connection.exec("ALTER TABLE #{table} DROP COLUMN #{name}")
+      Takarik::Data.exec_with_logging(connection, "ALTER TABLE #{table} DROP COLUMN #{name}")
     end
 
     # ========================================
@@ -69,11 +70,11 @@ module Takarik::Data
       sql += " UNIQUE" if options[:unique]
       sql += " INDEX #{index_name} ON #{table} (#{column_list})"
 
-      connection.exec(sql)
+      Takarik::Data.exec_with_logging(connection, sql)
     end
 
     def remove_index(table : String, name : String)
-      connection.exec("DROP INDEX #{name}")
+      Takarik::Data.exec_with_logging(connection, "DROP INDEX #{name}")
     end
 
     # ========================================
@@ -111,19 +112,20 @@ module Takarik::Data
     def column(name : String, type : String, **options)
       column_def = "#{name} #{type}"
 
-      if options[:null] == false
+      null_value = options[:null]?
+      if null_value == false
         column_def += " NOT NULL"
       end
 
-      if default = options[:default]
+      if default = options[:default]?
         column_def += " DEFAULT #{default}"
       end
 
-      if options[:primary_key]
+      if options[:primary_key]?
         column_def += " PRIMARY KEY"
       end
 
-      if options[:auto_increment]
+      if options[:auto_increment]?
         column_def += " AUTOINCREMENT"
       end
 

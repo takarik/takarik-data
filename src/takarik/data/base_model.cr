@@ -637,7 +637,7 @@ module Takarik::Data
 
       begin
         self.class.connection.transaction do |tx|
-          result = tx.connection.exec(query, id_value)
+          result = Takarik::Data.exec_with_logging(tx.connection, query, [id_value], self.class.name, "Destroy")
 
           if result.rows_affected > 0
             @persisted = false
@@ -685,7 +685,7 @@ module Takarik::Data
       query = "DELETE FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ?"
       id_value = get_attribute(self.class.primary_key)
 
-      result = connection.exec(query, id_value)
+      result = Takarik::Data.exec_with_logging(connection, query, [id_value], self.class.name, "Destroy")
 
       if result.rows_affected > 0
         @persisted = false
@@ -742,7 +742,7 @@ module Takarik::Data
 
       begin
         self.class.connection.transaction do |tx|
-          result = tx.connection.exec(query, args: @attributes.values.to_a)
+          result = Takarik::Data.exec_with_logging(tx.connection, query, @attributes.values.to_a, self.class.name, "Create")
 
           if result.rows_affected > 0
             # Get the inserted ID if it's an auto-increment primary key and not already set
@@ -806,7 +806,7 @@ module Takarik::Data
 
       begin
         self.class.connection.transaction do |tx|
-          result = tx.connection.exec(query, args: args)
+          result = Takarik::Data.exec_with_logging(tx.connection, query, args, self.class.name, "Update")
 
           if result.rows_affected > 0
             @changed_attributes.clear

@@ -249,7 +249,7 @@ module Takarik::Data
               end
             end
 
-            count = record.class.connection.scalar(query, args: args).as(Int64)
+            count = Takarik::Data.scalar_with_logging(record.class.connection, query, args).as(Int64)
 
             if count > 0
               error_hash = Hash(String, Array(String)).new

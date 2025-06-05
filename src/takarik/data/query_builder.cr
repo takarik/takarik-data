@@ -621,7 +621,7 @@ module Takarik::Data
       # Check if includes should use JOIN strategy - always true for includes
       use_join_for_includes = @includes.any?
 
-      @model_class.connection.query(to_sql, args: combined_params) do |rs|
+      Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "Load") do |rs|
         rs.each do
           instance = @model_class.new
           if use_join_for_includes
@@ -679,7 +679,7 @@ module Takarik::Data
     def count
       original_select = @select_clause
       @select_clause = "COUNT(*)"
-      result = @model_class.connection.scalar(to_sql, args: combined_params).as(Int64)
+      result = Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT").as(Int64)
       @select_clause = original_select
       result
     end
@@ -703,7 +703,7 @@ module Takarik::Data
     def pluck(column : String)
       @select_clause = column
       results = [] of DB::Any
-      @model_class.connection.query(to_sql, args: combined_params) do |rs|
+      Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "Pluck") do |rs|
         rs.each do
           results << rs.read
         end
@@ -714,7 +714,7 @@ module Takarik::Data
     def pluck(*columns : String)
       @select_clause = columns.join(", ")
       results = [] of Array(DB::Any)
-      @model_class.connection.query(to_sql, args: combined_params) do |rs|
+      Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "Pluck") do |rs|
         rs.each do
           row = [] of DB::Any
           columns.size.times do
@@ -783,7 +783,7 @@ module Takarik::Data
         sql += " WHERE #{where_clause}"
       end
 
-      result = @model_class.connection.exec(sql, args: update_params)
+      result = Takarik::Data.exec_with_logging(@model_class.connection, sql, update_params, @model_class.name, "Update")
       result.rows_affected
     end
 
@@ -819,7 +819,7 @@ module Takarik::Data
         sql += " WHERE #{where_clause}"
       end
 
-      result = @model_class.connection.exec(sql, args: combined_params)
+      result = Takarik::Data.exec_with_logging(@model_class.connection, sql, combined_params, @model_class.name, "Destroy")
       result.rows_affected
     end
 
@@ -1070,7 +1070,7 @@ module Takarik::Data
 
     private def aggregate(function : String, column : String)
       @select_clause = "#{function}(#{column})"
-      @model_class.connection.scalar(to_sql, args: combined_params)
+      Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, function)
     end
 
     # ========================================

@@ -179,11 +179,11 @@ module Takarik::Data
           current_class_name = self.class.name.split("::").last
           query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ? AND #{association.polymorphic_type} = ?"
           conn = connection || self.class.connection
-          conn.exec(query, primary_key_value, current_class_name)
+          Takarik::Data.exec_with_logging(conn, query, [primary_key_value, current_class_name])
         else
           query = "DELETE FROM #{table_name} WHERE #{association.foreign_key} = ?"
           conn = connection || self.class.connection
-          conn.exec(query, primary_key_value)
+          Takarik::Data.exec_with_logging(conn, query, [primary_key_value])
         end
       end
     end
@@ -212,11 +212,11 @@ module Takarik::Data
           current_class_name = self.class.name.split("::").last
           query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ? AND #{association.polymorphic_type} = ?"
           conn = connection || self.class.connection
-          conn.exec(query, primary_key_value, current_class_name)
+          Takarik::Data.exec_with_logging(conn, query, [primary_key_value, current_class_name])
         else
           query = "UPDATE #{table_name} SET #{association.foreign_key} = NULL WHERE #{association.foreign_key} = ?"
           conn = connection || self.class.connection
-          conn.exec(query, primary_key_value)
+          Takarik::Data.exec_with_logging(conn, query, [primary_key_value])
         end
       end
     end
@@ -660,7 +660,7 @@ module Takarik::Data
                   "WHERE #{intermediate_table}.#{current_foreign_key} = ?"
 
           results = [] of {{class_type}}
-          {{class_type}}.connection.query(query, primary_key_value) do |rs|
+          Takarik::Data.query_with_logging({{class_type}}.connection, query, [primary_key_value]) do |rs|
             while rs.move_next
               instance = {{class_type}}.new
               instance.load_from_result_set(rs)
@@ -988,7 +988,7 @@ module Takarik::Data
                 "WHERE #{{{join_table_str}}}.#{{{foreign_key_str}}} = ?"
 
         results = [] of {{class_type}}
-        {{class_type}}.connection.query(query, primary_key_value) do |rs|
+        Takarik::Data.query_with_logging({{class_type}}.connection, query, [primary_key_value]) do |rs|
           while rs.move_next
             instance = {{class_type}}.new
             instance.load_from_result_set(rs)
@@ -1020,12 +1020,12 @@ module Takarik::Data
 
         # Check if association already exists
         existing_query = "SELECT COUNT(*) FROM #{{{join_table_str}}} WHERE #{{{foreign_key_str}}} = ? AND #{{{association_foreign_key_str}}} = ?"
-        count = self.class.connection.scalar(existing_query, primary_key_value, target_key_value).as(Int64)
+        count = Takarik::Data.scalar_with_logging(self.class.connection, existing_query, [primary_key_value, target_key_value]).as(Int64)
 
         if count == 0
           # Insert new association
           insert_query = "INSERT INTO #{{{join_table_str}}} (#{{{foreign_key_str}}}, #{{{association_foreign_key_str}}}) VALUES (?, ?)"
-          self.class.connection.exec(insert_query, primary_key_value, target_key_value)
+          Takarik::Data.exec_with_logging(self.class.connection, insert_query, [primary_key_value, target_key_value])
         end
 
         record
@@ -1039,7 +1039,7 @@ module Takarik::Data
         return record unless primary_key_value && target_key_value
 
         delete_query = "DELETE FROM #{{{join_table_str}}} WHERE #{{{foreign_key_str}}} = ? AND #{{{association_foreign_key_str}}} = ?"
-        self.class.connection.exec(delete_query, primary_key_value, target_key_value)
+        Takarik::Data.exec_with_logging(self.class.connection, delete_query, [primary_key_value, target_key_value])
         record
       end
 
@@ -1049,7 +1049,7 @@ module Takarik::Data
         return unless primary_key_value
 
         clear_query = "DELETE FROM #{{{join_table_str}}} WHERE #{{{foreign_key_str}}} = ?"
-        self.class.connection.exec(clear_query, primary_key_value)
+        Takarik::Data.exec_with_logging(self.class.connection, clear_query, [primary_key_value])
       end
     end
   end
