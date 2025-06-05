@@ -99,9 +99,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
 
   describe "Basic includes per ActiveRecord specification" do
     it "should work with the exact ActiveRecord pattern" do
-      puts "\n" + "="*60
-      puts "TESTING ACTIVERECORD INCLUDES SPECIFICATION"
-      puts "="*60
 
       # Create test data
       author1 = AuthorAdvanced.create(first_name: "J.K.", last_name: "Rowling")
@@ -117,39 +114,23 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         BookAdvanced.create(title: "Pet Sematary", author_id: author2.id, supplier_id: supplier.id, out_of_print: false),
       ]
 
-      puts "\n📚 Created #{books.size} books by #{[author1, author2].size} authors"
 
-      puts "\n" + "-"*50
-      puts "ACTIVERECORD SPECIFICATION EXAMPLE:"
-      puts "-"*50
-      puts "books = BookAdvanced.includes(:author).limit(10)"
-      puts ""
-      puts "books.each do |book|"
-      puts "  puts book.author.last_name"
-      puts "end"
 
-      puts "\n🔍 CURRENT IMPLEMENTATION BEHAVIOR:"
 
       # Execute the includes query
-      puts "📊 Executing: books = BookAdvanced.includes(:author).limit(5)"
       books_with_includes = BookAdvanced.includes(:author).limit(5)
 
       # Check the generated SQL
       sql = books_with_includes.to_sql
-      puts "📊 Generated SQL:"
-      puts "   #{sql}"
 
       # Execute and check results
       books_loaded = books_with_includes.to_a
-      puts "📊 Loaded #{books_loaded.size} books"
 
       # Access authors and verify behavior
-      puts "📊 Accessing authors:"
       author_names = [] of String
       books_loaded.each_with_index do |book, index|
         author_name = book.author.last_name
         author_names << author_name.to_s if author_name
-        puts "  Book #{index + 1}: '#{book.title}' by #{author_name}"
       end
 
       # Verify we got the expected data
@@ -158,15 +139,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       author_names.should contain("Rowling")
       author_names.should contain("King")
 
-      puts "\n✅ RESULT: Includes working for basic associations"
     end
   end
 
   describe "Multiple associations loading" do
     it "should support Customer.includes(:orders, :reviews)" do
-      puts "\n" + "="*60
-      puts "TESTING MULTIPLE ASSOCIATIONS - ARRAY SYNTAX"
-      puts "="*60
 
       # Create test data
       customer = Customer.create(name: "John Doe", email: "john@example.com")
@@ -179,12 +156,7 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       review1 = Review.create(rating: 5, comment: "Great!", customer_id: customer.id)
       review2 = Review.create(rating: 4, comment: "Good", customer_id: customer.id)
 
-      puts "\n📊 Created customer with 2 orders and 2 reviews"
 
-      puts "\n" + "-"*50
-      puts "ACTIVERECORD SPECIFICATION EXAMPLE:"
-      puts "-"*50
-      puts "Customer.includes(:orders, :reviews)"
 
       # Test multiple includes
       customers = Customer.includes(:orders, :reviews).to_a
@@ -200,18 +172,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       orders.size.should eq(2)
       reviews.size.should eq(2)
 
-      puts "\n✅ RESULT: Multiple associations loaded successfully"
-      puts "   Customer: #{customer_loaded.name}"
-      puts "   Orders: #{orders.size}"
-      puts "   Reviews: #{reviews.size}"
     end
   end
 
   describe "Performance comparison" do
     it "demonstrates includes efficiency vs N+1 problem" do
-      puts "\n" + "="*60
-      puts "PERFORMANCE VERIFICATION: INCLUDES VS N+1"
-      puts "="*60
 
       # Create test data at scale
       authors = [
@@ -233,14 +198,7 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         )
       end
 
-      puts "\n📊 Created 15 books by 3 authors"
 
-      puts "\n" + "-"*50
-      puts "SCENARIO 1: N+1 PROBLEM"
-      puts "-"*50
-      puts "books = BookAdvanced.limit(15).to_a"
-      puts "books.each { |book| puts book.author.last_name }"
-      puts "Expected: 16 queries (1 + 15)"
 
       # Simulate N+1
       books_n1 = BookAdvanced.limit(15).to_a
@@ -250,14 +208,7 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         author_names_n1 << author_name.to_s if author_name
       end
 
-      puts "Result: Retrieved #{books_n1.size} books, accessed #{author_names_n1.size} authors"
 
-      puts "\n" + "-"*50
-      puts "SCENARIO 2: INCLUDES SOLUTION"
-      puts "-"*50
-      puts "books = BookAdvanced.includes(:author).limit(15).to_a"
-      puts "books.each { |book| puts book.author.last_name }"
-      puts "Expected: 1 query (with JOIN)"
 
       # Use includes
       books_includes = BookAdvanced.includes(:author).limit(15).to_a
@@ -267,16 +218,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         author_names_includes << author_name.to_s if author_name
       end
 
-      puts "Result: Retrieved #{books_includes.size} books, accessed #{author_names_includes.size} authors"
 
       # Verify both approaches give same results
       books_n1.size.should eq(books_includes.size)
       author_names_n1.sort.should eq(author_names_includes.sort)
 
-      puts "\n✅ VERIFICATION COMPLETE"
-      puts "Both approaches return identical data"
-      puts "Includes approach is significantly more efficient"
-      puts "N+1: 16 queries vs Includes: 1 query = 93.75% reduction!"
     end
   end
 end

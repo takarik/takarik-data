@@ -55,9 +55,6 @@ describe "N+1 Queries Problem - Exact User Example" do
   end
 
   it "demonstrates N+1 problem with the exact code from the issue" do
-    puts "\n" + "="*60
-    puts "REPRODUCING THE EXACT N+1 PROBLEM FROM THE ISSUE"
-    puts "="*60
 
     # Create authors
     authors = [
@@ -79,48 +76,20 @@ describe "N+1 Queries Problem - Exact User Example" do
       Book.create(title: title, author_id: author.id)
     end
 
-    puts "\n📚 Created #{books_data.size} books by #{authors.size} authors"
 
-    puts "\n" + "-"*50
-    puts "THE PROBLEMATIC CODE (from the issue):"
-    puts "-"*50
-    puts "books = Book.limit(10)"
-    puts ""
-    puts "books.each do |book|"
-    puts "  puts book.author.last_name"
-    puts "end"
 
-    puts "\n🔍 QUERY ANALYSIS:"
-    puts "This code executes:"
-    puts "1️⃣  1 query to find 10 books"
-    puts "2️⃣  + 10 queries (one per book to load the author)"
-    puts "   = 11 queries in total"
-    puts ""
-    puts "Let's see it in action:"
 
     # Execute the problematic code
-    puts "\n📊 Executing: books = Book.limit(10)"
     books = Book.limit(10)
 
-    puts "📊 Now executing the loop that causes N+1..."
-    puts "books.each do |book|"
-    puts "  puts book.author.last_name  # <- Each iteration queries the database!"
-    puts "end"
-    puts ""
 
     # Track the authors' last names
     last_names = [] of String
     books.each_with_index do |book, index|
       author_last_name = book.author.last_name
       last_names << author_last_name.to_s if author_last_name
-      puts "  Book #{index + 1}: '#{book.title}' by #{author_last_name} (query #{index + 2})"
     end
 
-    puts "\n💡 RESULT:"
-    puts "✅ Retrieved #{books.size} books"
-    puts "✅ Found authors: #{last_names.uniq.join(", ")}"
-    puts "❌ Used 11 database queries (1 + 10)"
-    puts "❌ This is inefficient and doesn't scale!"
 
     # Verify we got the expected data
     books.size.should eq(10)
@@ -128,9 +97,6 @@ describe "N+1 Queries Problem - Exact User Example" do
   end
 
   it "shows the solution using includes() for eager loading" do
-    puts "\n" + "="*60
-    puts "SOLUTION: EAGER LOADING WITH includes()"
-    puts "="*60
 
     # Create the same test data
     authors = [
@@ -145,45 +111,19 @@ describe "N+1 Queries Problem - Exact User Example" do
       Book.create(title: "Book #{i + 1}", author_id: author.id)
     end
 
-    puts "\n" + "-"*50
-    puts "IMPROVED CODE:"
-    puts "-"*50
-    puts "books = Book.limit(10).includes(:author)"
-    puts ""
-    puts "books.each do |book|"
-    puts "  puts book.author.last_name  # No additional queries!"
-    puts "end"
 
-    puts "\n🔍 QUERY ANALYSIS:"
-    puts "This improved code executes:"
-    puts "1️⃣  1 query with JOIN to get books + authors"
-    puts "   = 1 query total"
-    puts ""
-    puts "Let's see the improvement:"
 
     # Execute the improved code
-    puts "\n📊 Executing: books = Book.limit(10).includes(:author)"
     books = Book.limit(10).includes(:author)
 
-    puts "📊 Now executing the loop (no additional queries)..."
-    puts "books.each do |book|"
-    puts "  puts book.author.last_name  # <- No additional queries!"
-    puts "end"
-    puts ""
 
     # Track the authors' last names
     last_names = [] of String
     books.each_with_index do |book, index|
       author_last_name = book.author.last_name
       last_names << author_last_name.to_s if author_last_name
-      puts "  Book #{index + 1}: '#{book.title}' by #{author_last_name} (from cache)"
     end
 
-    puts "\n💡 RESULT:"
-    puts "✅ Retrieved #{books.size} books with authors"
-    puts "✅ Found authors: #{last_names.uniq.join(", ")}"
-    puts "✅ Used only 1 database query!"
-    puts "✅ 91% improvement in query efficiency!"
 
     # Verify we got the same data
     books.size.should eq(10)
@@ -191,9 +131,6 @@ describe "N+1 Queries Problem - Exact User Example" do
   end
 
   it "demonstrates performance impact at scale" do
-    puts "\n" + "="*60
-    puts "PERFORMANCE IMPACT AT SCALE"
-    puts "="*60
 
     # Create one author for simplicity
     author = Author.create(first_name: "Prolific", last_name: "Writer")
@@ -207,10 +144,6 @@ describe "N+1 Queries Problem - Exact User Example" do
         Book.create(title: "Book #{i + 1}", author_id: author.id)
       end
 
-      puts "\n📈 With #{count} books:"
-      puts "   N+1 approach: #{1 + count} queries"
-      puts "   Includes approach: 1 query"
-      puts "   Difference: #{count} fewer queries (#{((count.to_f / (1 + count)) * 100).round(1)}% improvement)"
 
       # Verify both approaches work
       books_n1 = Book.limit(count).to_a
@@ -220,8 +153,5 @@ describe "N+1 Queries Problem - Exact User Example" do
       books_optimized.size.should eq(count)
     end
 
-    puts "\n💭 CONCLUSION:"
-    puts "As the number of records grows, the N+1 problem becomes exponentially worse."
-    puts "With 500 books: 501 queries vs 1 query = 50,000% more database load!"
   end
 end

@@ -76,28 +76,15 @@ describe "ActiveRecord Eager Load Specification" do
       )
     end
 
-    puts "\n=== Testing ActiveRecord Eager Load Specification ==="
-    puts "The specification states:"
-    puts "books = Book.eager_load(:author).limit(10)"
-    puts "books.each { |book| puts book.author.last_name }"
-    puts "Should execute exactly 1 query with LEFT OUTER JOIN:"
-    puts "SELECT \"books\".\"id\" AS t0_r0, \"books\".\"title\" AS t0_r1, ..."
-    puts "  FROM \"books\""
-    puts "  LEFT OUTER JOIN \"authors\" ON \"authors\".\"id\" = \"books\".\"author_id\""
-    puts "  LIMIT 10"
 
     # Test eager_load
-    puts "\n--- Testing eager_load method ---"
     books = BookEL.eager_load(:author_el).limit(10).to_a
 
-    puts "Loaded #{books.size} books"
-    puts "Accessing author data (should not trigger additional queries):"
 
     books.each_with_index do |book, index|
       author = book.author_el.target
       if author
         last_name = author.get_attribute("last_name")
-        puts "  Book #{index + 1}: #{book.get_attribute("title")} by #{last_name}"
       end
     end
 
@@ -106,28 +93,16 @@ describe "ActiveRecord Eager Load Specification" do
       book.author_el.loaded?.should be_true
     end
 
-    puts "\n=== Comparison: includes vs preload vs eager_load ==="
 
     # Test includes (LEFT JOIN - 1 query)
-    puts "\n--- includes: LEFT JOIN (1 query) ---"
     books_inc = BookEL.includes(:author_el).limit(10).to_a
-    puts "Loaded #{books_inc.size} books with includes"
 
     # Test preload (separate queries - 2 queries)
-    puts "\n--- preload: separate queries (2 queries) ---"
     books_pre = BookEL.preload(:author_el).limit(10).to_a
-    puts "Loaded #{books_pre.size} books with preload"
 
     # Test eager_load (LEFT OUTER JOIN - 1 query)
-    puts "\n--- eager_load: LEFT OUTER JOIN (1 query) ---"
     books_eager = BookEL.eager_load(:author_el).limit(10).to_a
-    puts "Loaded #{books_eager.size} books with eager_load"
 
-    puts "\n✅ Eager Load follows ActiveRecord specification!"
-    puts "✓ Uses 1 query with LEFT OUTER JOIN"
-    puts "✓ Always uses JOIN approach (never separate queries)"
-    puts "✓ Prevents N+1 problem"
-    puts "✓ Loads associations efficiently"
 
     # Verify all approaches return same data
     books.size.should eq(10)

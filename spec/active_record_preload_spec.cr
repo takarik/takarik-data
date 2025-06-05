@@ -76,26 +76,13 @@ describe "ActiveRecord Preload Specification" do
       )
     end
 
-    puts "\n=== Testing ActiveRecord Preload Specification ==="
-    puts "The specification states:"
-    puts "books = Book.preload(:author).limit(10)"
-    puts "books.each { |book| puts book.author.last_name }"
-    puts "Should execute exactly 2 queries:"
-    puts "1. SELECT books.* FROM books LIMIT 10"
-    puts "2. SELECT authors.* FROM authors WHERE authors.id IN (1,2,3,4,5,6,7,8,9,10)"
-
     # Test preload
-    puts "\n--- Testing preload method ---"
     books = BookPL.preload(:author_pl).limit(10).to_a
-
-    puts "Loaded #{books.size} books"
-    puts "Accessing author data (should not trigger additional queries):"
 
     books.each_with_index do |book, index|
       author = book.author_pl.target
       if author
         last_name = author.get_attribute("last_name")
-        puts "  Book #{index + 1}: #{book.get_attribute("title")} by #{last_name}"
       end
     end
 
@@ -104,22 +91,11 @@ describe "ActiveRecord Preload Specification" do
       book.author_pl.loaded?.should be_true
     end
 
-    puts "\n=== Comparison with includes and N+1 ==="
-
     # Test includes (1 query with JOIN)
-    puts "\n--- includes: 1 query with JOIN ---"
     books_inc = BookPL.includes(:author_pl).limit(10).to_a
-    puts "Loaded #{books_inc.size} books with includes"
 
     # Test N+1 (separate query for each author)
-    puts "\n--- N+1 problem: 1 + N queries ---"
     books_n1 = BookPL.limit(10).to_a
-    puts "Would trigger #{books_n1.size} additional queries without preload/includes"
-
-    puts "\n✅ Preload follows ActiveRecord specification!"
-    puts "✓ Uses 2 separate queries instead of JOIN"
-    puts "✓ Prevents N+1 problem"
-    puts "✓ Loads associations efficiently"
 
     books.size.should eq(10)
     books.all? { |book| book.author_pl.loaded? }.should be_true
