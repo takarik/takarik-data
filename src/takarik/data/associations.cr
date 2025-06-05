@@ -872,40 +872,41 @@ module Takarik::Data
         {% end %}
       {% else %}
         # Generate join table name from model names in alphabetical order using inline pluralization
-        {% # Pluralize current class name
+        {%
+          # Pluralize current class name
+          current_class_name = @type.name.split("::").last.underscore
+          if current_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| current_class_name.ends_with?(ending) }
+            current_table = current_class_name[0..-2] + "ies"
+          elsif current_class_name.ends_with?("s") || current_class_name.ends_with?("sh") || current_class_name.ends_with?("ch") || current_class_name.ends_with?("x") || current_class_name.ends_with?("z")
+            current_table = current_class_name + "es"
+          elsif current_class_name.ends_with?("f")
+            current_table = current_class_name[0..-2] + "ves"
+          elsif current_class_name.ends_with?("fe")
+            current_table = current_class_name[0..-3] + "ves"
+          else
+            current_table = current_class_name + "s"
+          end
 
-current_class_name = @type.name.split("::").last.underscore
-if current_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| current_class_name.ends_with?(ending) }
-  current_table = current_class_name[0..-2] + "ies"
-elsif current_class_name.ends_with?("s") || current_class_name.ends_with?("sh") || current_class_name.ends_with?("ch") || current_class_name.ends_with?("x") || current_class_name.ends_with?("z")
-  current_table = current_class_name + "es"
-elsif current_class_name.ends_with?("f")
-  current_table = current_class_name[0..-2] + "ves"
-elsif current_class_name.ends_with?("fe")
-  current_table = current_class_name[0..-3] + "ves"
-else
-  current_table = current_class_name + "s"
-end
+          # Pluralize target class name
+          target_class_name = class_type.stringify.underscore
+          if target_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| target_class_name.ends_with?(ending) }
+            target_table = target_class_name[0..-2] + "ies"
+          elsif target_class_name.ends_with?("s") || target_class_name.ends_with?("sh") || target_class_name.ends_with?("ch") || target_class_name.ends_with?("x") || target_class_name.ends_with?("z")
+            target_table = target_class_name + "es"
+          elsif target_class_name.ends_with?("f")
+            target_table = target_class_name[0..-2] + "ves"
+          elsif target_class_name.ends_with?("fe")
+            target_table = target_class_name[0..-3] + "ves"
+          else
+            target_table = target_class_name + "s"
+          end
 
-# Pluralize target class name
-target_class_name = class_type.stringify.underscore
-if target_class_name.ends_with?("y") && !["ay", "ey", "iy", "oy", "uy"].any? { |ending| target_class_name.ends_with?(ending) }
-  target_table = target_class_name[0..-2] + "ies"
-elsif target_class_name.ends_with?("s") || target_class_name.ends_with?("sh") || target_class_name.ends_with?("ch") || target_class_name.ends_with?("x") || target_class_name.ends_with?("z")
-  target_table = target_class_name + "es"
-elsif target_class_name.ends_with?("f")
-  target_table = target_class_name[0..-2] + "ves"
-elsif target_class_name.ends_with?("fe")
-  target_table = target_class_name[0..-3] + "ves"
-else
-  target_table = target_class_name + "s"
-end
-
-if current_table < target_table
-  join_table_str = current_table + "_" + target_table
-else
-  join_table_str = target_table + "_" + current_table
-end
+          # Generate join table name alphabetically
+          if current_table < target_table
+            join_table_str = current_table + "_" + target_table
+          else
+            join_table_str = target_table + "_" + current_table
+          end
         %}
       {% end %}
 
