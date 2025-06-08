@@ -26,6 +26,7 @@ module Takarik::Data
     @distinct = false
     @has_joins = false
     @none = false
+    @readonly = false
     @includes = [] of String
     @preloads = [] of String
     @eager_loads = [] of String
@@ -46,6 +47,7 @@ module Takarik::Data
       new_query.set_group(@group_clause)
       new_query.set_having_conditions(@having_conditions.dup, @having_params.dup)
       new_query.set_none(@none)
+      new_query.set_readonly(@readonly)
       # Copy other arrays
       new_query.copy_includes(@includes.dup)
       new_query.copy_preloads(@preloads.dup)
@@ -755,6 +757,11 @@ module Takarik::Data
       self
     end
 
+    def set_readonly(readonly : Bool)
+      @readonly = readonly
+      self
+    end
+
     # Getter methods for debugging
     def order_clauses
       @order_clauses
@@ -967,6 +974,13 @@ module Takarik::Data
       new_query
     end
 
+    # Return a relation that marks all returned records as readonly
+    def readonly
+      new_query = dup
+      new_query.set_readonly(true)
+      new_query
+    end
+
     # ========================================
     # GROUP BY METHODS
     # ========================================
@@ -1161,6 +1175,12 @@ module Takarik::Data
           else
             instance.load_from_result_set(rs)
           end
+
+          # Mark instance as readonly if the query is readonly
+          if @readonly
+            instance.readonly!
+          end
+
           results << instance
         end
       end

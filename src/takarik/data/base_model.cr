@@ -25,6 +25,13 @@ module Takarik::Data
     end
   end
 
+  # Exception raised when attempting to modify a readonly record
+  class ReadOnlyRecord < Exception
+    def initialize(message : String = "Attempting to modify a readonly record")
+      super(message)
+    end
+  end
+
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
   abstract class BaseModel
@@ -54,6 +61,7 @@ module Takarik::Data
     @_last_action : Symbol?
     @association_cache = {} of String => (BaseModel | Nil)
     @loaded_associations = Set(String).new
+    @readonly = false
 
     # ========================================
     # CLASS METHODS - CONFIGURATION
@@ -410,6 +418,10 @@ module Takarik::Data
 
     def self.none
       query.none
+    end
+
+    def self.readonly
+      query.readonly
     end
 
     def self.having(condition : String)
@@ -1020,6 +1032,11 @@ module Takarik::Data
     # - after_rollback callbacks (after rollback)
     #
     def save
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
+
       # Run before_validation callbacks
       run_before_validation_callbacks
 
@@ -1046,6 +1063,11 @@ module Takarik::Data
     end
 
     def save!
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
+
       # Run before_validation callbacks
       run_before_validation_callbacks
 
@@ -1074,6 +1096,11 @@ module Takarik::Data
     end
 
     def update(attributes : Hash(String, DB::Any))
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
+
       # Check if any attributes are association objects and process them
       processed_attributes = process_db_any_attributes_for_associations(attributes)
       processed_attributes.each do |key, value|
@@ -1083,6 +1110,11 @@ module Takarik::Data
     end
 
     def update(**attributes)
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
+
       # Process association objects first
       processed_attributes = process_association_attributes_for_update(attributes)
       update(processed_attributes)
@@ -1090,6 +1122,11 @@ module Takarik::Data
 
     def touch(*attributes)
       return false if new_record?
+
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
 
       current_time = Time.utc
 
@@ -1131,6 +1168,11 @@ module Takarik::Data
 
     def destroy
       return false if new_record?
+
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
 
       # Run before_destroy callbacks
       run_before_destroy_callbacks
@@ -2506,7 +2548,7 @@ module Takarik::Data
       {% begin %}
         case column_name
         {% for ivar in @type.instance_vars %}
-          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action", "association_cache", "loaded_associations"] %}
+          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action", "association_cache", "loaded_associations", "readonly"] %}
           {% unless excluded_vars.includes?(ivar.name.stringify) %}
             when {{ivar.name.stringify}}
               # Extract the type from the instance variable type and do direct assignment
@@ -2670,6 +2712,21 @@ module Takarik::Data
     private def execute_rollback_callbacks(action : Symbol)
       @_last_action = action
       run_after_rollback_callbacks
+    end
+
+    # ========================================
+    # READONLY METHODS
+    # ========================================
+
+    # Check if this record is readonly
+    def readonly?
+      @readonly
+    end
+
+    # Mark this record as readonly
+    def readonly!
+      @readonly = true
+      self
     end
   end
 end
