@@ -620,6 +620,23 @@ module Takarik::Data
     end
 
     # ========================================
+    # INSTANCE METHODS - ID VALUE ACCESS
+    # ========================================
+
+    # Returns the value of the :id column specifically (not primary key).
+    # This is different from primary key access in composite key models.
+    #
+    # Examples:
+    #   customer = Customer.last
+    #   customer.id_value  # => 10 (returns the :id column value)
+    #
+    # For composite primary key models like [:store_id, :id], this returns
+    # only the :id column value, not the full composite key.
+    def id_value
+      get_attribute("id")
+    end
+
+    # ========================================
     # CLASS METHODS - CREATION
     # ========================================
 

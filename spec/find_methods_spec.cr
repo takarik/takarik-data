@@ -13,6 +13,19 @@ Takarik::Data.connection.exec <<-SQL
   )
 SQL
 
+# Create table that matches Rails example: [:store_id, :id] as primary key
+Takarik::Data.connection.exec <<-SQL
+  CREATE TABLE IF NOT EXISTS test_customers (
+    store_id INTEGER,
+    id INTEGER,
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    created_at DATETIME,
+    updated_at DATETIME,
+    PRIMARY KEY (store_id, id)
+  )
+SQL
+
 # Model with composite primary key
 class TestOrder < Takarik::Data::BaseModel
   table_name "test_orders"
@@ -23,11 +36,22 @@ class TestOrder < Takarik::Data::BaseModel
   timestamps
 end
 
+# Model that exactly matches Rails example: [:store_id, :id] as primary key
+class TestCustomer < Takarik::Data::BaseModel
+  table_name "test_customers"
+  primary_key [:store_id, :id]
+
+  column first_name, String
+  column last_name, String
+  timestamps
+end
+
 describe "Find Methods" do
   before_each do
     # Clean up test data
     Takarik::Data.connection.exec("DELETE FROM users")
     Takarik::Data.connection.exec("DELETE FROM test_orders")
+    Takarik::Data.connection.exec("DELETE FROM test_customers")
   end
 
   describe "Single ID find" do
@@ -469,7 +493,7 @@ describe "Find Methods" do
     end
   end
 
-    describe "last methods" do
+  describe "last methods" do
     it "finds the last record ordered by primary key" do
       user1 = User.new
       user1.name = "First User"
@@ -636,7 +660,7 @@ describe "Find Methods" do
     end
   end
 
-    describe "find_by methods" do
+  describe "find_by methods" do
     it "finds a record by single condition" do
       user = User.new
       user.name = "Lifo"
@@ -769,7 +793,7 @@ describe "Find Methods" do
     end
   end
 
-    describe "QueryBuilder exception consistency" do
+  describe "QueryBuilder exception consistency" do
     it "throws RecordNotFound for first! on empty QueryBuilder result" do
       expect_raises(Takarik::Data::RecordNotFound) do
         User.where(name: "NonExistent").first!
@@ -957,6 +981,208 @@ describe "Find Methods" do
       User.where(name: "NonExistent").first(3).should be_empty
       User.where(name: "NonExistent").take(3).should be_empty
       User.where(name: "NonExistent").last(3).should be_empty
+    end
+  end
+
+  describe "ID column vs Primary Key distinction" do
+    it "find() uses primary key logic for composite keys" do
+      # Create records with different composite keys
+      order1 = TestOrder.new
+      order1.shop_id = 5
+      order1.order_id = 10
+      order1.order_number = "ORD-001"
+      order1.total = 99.99
+      order1.save
+
+      order2 = TestOrder.new
+      order2.shop_id = 3
+      order2.order_id = 5
+      order2.order_number = "ORD-002"
+      order2.total = 149.99
+      order2.save
+
+      # find() uses primary key logic - searches by composite key [shop_id, order_id]
+      found_order = TestOrder.find([5, 10])
+      found_order.should_not be_nil
+      found_order.not_nil!.shop_id.should eq(5)
+      found_order.not_nil!.order_id.should eq(10)
+      found_order.not_nil!.order_number.should eq("ORD-001")
+    end
+
+    it "find_by(id:) treats :id as literal column name" do
+      # Create records with different composite keys
+      order1 = TestOrder.new
+      order1.shop_id = 5
+      order1.order_id = 10
+      order1.order_number = "ORD-001"
+      order1.total = 99.99
+      order1.save
+
+      order2 = TestOrder.new
+      order2.shop_id = 3
+      order2.order_id = 5
+      order2.order_number = "ORD-002"
+      order2.total = 149.99
+      order2.save
+
+      # find_by(id:) treats :id as literal column name - searches only by order_id column
+      found_order = TestOrder.find_by(order_id: 10)
+      found_order.should_not be_nil
+      found_order.not_nil!.shop_id.should eq(5)
+      found_order.not_nil!.order_id.should eq(10)
+      found_order.not_nil!.order_number.should eq("ORD-001")
+
+      # This would find the order with order_id = 5, regardless of shop_id
+      found_order2 = TestOrder.find_by(order_id: 5)
+      found_order2.should_not be_nil
+      found_order2.not_nil!.shop_id.should eq(3)
+      found_order2.not_nil!.order_id.should eq(5)
+      found_order2.not_nil!.order_number.should eq("ORD-002")
+    end
+
+    it "id_value method returns the :id column value specifically" do
+      # Create a record with composite key [:store_id, :id] - exact Rails example
+      customer = TestCustomer.new
+      customer.store_id = 5
+      customer.id = 10
+      customer.first_name = "Joe"
+      customer.last_name = "Doe"
+      customer.save
+
+      # id_value should return the id value (the :id column)
+      customer.id_value.should eq(10)
+
+      # This demonstrates the difference from primary key access
+      # For composite keys, primary key would be [5, 10]
+      # But id_value specifically returns just the :id column value: 10
+    end
+
+    it "demonstrates the Rails example scenario exactly" do
+      # Rails example: customers with [:store_id, :id] as primary key
+      # Create customer Joe with id=10, store_id=5
+      customer_joe = TestCustomer.new
+      customer_joe.store_id = 5
+      customer_joe.id = 10
+      customer_joe.first_name = "Joe"
+      customer_joe.last_name = "Doe"
+      customer_joe.save
+
+      # Create customer Bob with id=5, store_id=3
+      customer_bob = TestCustomer.new
+      customer_bob.store_id = 3
+      customer_bob.id = 5
+      customer_bob.first_name = "Bob"
+      customer_bob.last_name = "Smith"
+      customer_bob.save
+
+      # Get the last customer (should be Joe)
+      last_customer = TestCustomer.last
+      last_customer.not_nil!.first_name.should eq("Joe")
+
+      # ❌ PROBLEMATIC: If someone naively uses find_by(id:) with wrong value
+      # They might intend to find the customer with composite key [5, 10]
+      # But find_by(id: 5) only searches the :id column, finding Bob instead!
+      wrong_result = TestCustomer.find_by(id: 5)
+      wrong_result.not_nil!.first_name.should eq("Bob") # Wrong customer!
+      wrong_result.not_nil!.store_id.should eq(3)
+
+      # ✅ CORRECT APPROACH 1: Use find() with composite primary key
+      correct_with_find = TestCustomer.find([5, 10]) # [store_id, id]
+      correct_with_find.not_nil!.first_name.should eq("Joe")
+
+      # ✅ CORRECT APPROACH 2: Use id_value to get the right :id column value
+      # id_value gives us the :id column value (10) to use with find_by
+      correct_with_id_value = TestCustomer.find_by(id: last_customer.not_nil!.id_value)
+      correct_with_id_value.not_nil!.first_name.should eq("Joe")
+      correct_with_id_value.not_nil!.id.should eq(10)
+
+      # Demonstrate the value of id_value: it gives us the :id column specifically
+      last_customer.not_nil!.id_value.should eq(10) # The :id column value
+
+      # This shows why id_value is needed: to safely use the :id column with find_by
+      # Without id_value, developers might accidentally pass wrong values to find_by(id:)
+    end
+
+    it "demonstrates the exact Rails documentation warning" do
+      # Recreate the exact Rails example from the documentation:
+      # "Take caution when using find_by(id:) on models where :id is not the primary key"
+
+      # Customer with id: 10, store_id: 5, first_name: "Joe"
+      customer_joe = TestCustomer.new
+      customer_joe.store_id = 5
+      customer_joe.id = 10
+      customer_joe.first_name = "Joe"
+      customer_joe.save
+
+      # Customer with id: 5, store_id: 3, first_name: "Bob"
+      customer_bob = TestCustomer.new
+      customer_bob.store_id = 3
+      customer_bob.id = 5
+      customer_bob.first_name = "Bob"
+      customer_bob.save
+
+      # Rails comment: "Here, we might intend to search for a single record
+      # with the composite primary key [5, 10], but Active Record will search
+      # for a record with an :id column of either 5 or 10, and may return the wrong record."
+
+      customer = TestCustomer.last # Gets Joe (id: 10, store_id: 5)
+      customer.not_nil!.first_name.should eq("Joe")
+
+      # ❌ PROBLEMATIC: Customer.find_by(id: customer.id)
+      # This finds a record with :id column = 10, which is correct in this case
+      # But it's searching ONLY by :id column, ignoring store_id
+      result1 = TestCustomer.find_by(id: customer.not_nil!.id)
+      result1.not_nil!.first_name.should eq("Joe") # Happens to be correct
+
+      # But if we had meant to search for composite key [5, 10] and mistakenly
+      # passed just the id part (10), we'd get the wrong expectation
+      # The real problem comes when developers think find_by(id:) works like find()
+
+      # ✅ SOLUTION: Use id_value method for clarity
+      # "The id_value method can be used to fetch the value of the :id column
+      # for a record, for use in finder methods such as find_by and where"
+      result2 = TestCustomer.find_by(id: customer.not_nil!.id_value)
+      result2.not_nil!.first_name.should eq("Joe")
+      result2.not_nil!.id.should eq(10)
+
+      # The key insight: id_value makes it explicit that you're getting the :id column
+      customer.not_nil!.id_value.should eq(10)
+    end
+
+    it "where() also treats :id as literal column name like find_by" do
+      order1 = TestOrder.new
+      order1.shop_id = 5
+      order1.order_id = 10
+      order1.order_number = "ORD-001"
+      order1.total = 99.99
+      order1.save
+
+      order2 = TestOrder.new
+      order2.shop_id = 3
+      order2.order_id = 10
+      order2.order_number = "ORD-002"
+      order2.total = 149.99
+      order2.save
+
+      # where() searches by literal column name, not primary key logic
+      orders = TestOrder.where(order_id: 10).to_a
+      orders.size.should eq(2) # Both orders have order_id = 10
+
+      # This is different from find([5, 10]) which would find only one specific record
+      specific_order = TestOrder.find([5, 10])
+      specific_order.not_nil!.order_number.should eq("ORD-001")
+    end
+
+    it "id_value works correctly with regular single primary key models" do
+      user = User.new
+      user.name = "John Doe"
+      user.email = "john@example.com"
+      user.age = 30
+      user.save
+
+      # For single primary key models, id_value and primary key are the same
+      user.id_value.should eq(user.id)
+      user.id_value.should eq(user.id_value)
     end
   end
 
