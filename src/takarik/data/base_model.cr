@@ -392,6 +392,47 @@ module Takarik::Data
       all.order(primary_key, "DESC").first
     end
 
+    # Retrieve a record without any implicit ordering. Returns nil if no record found.
+    #
+    # Examples:
+    #   Customer.take  # => Customer or nil
+    #
+    # SQL: SELECT * FROM customers LIMIT 1
+    def self.take
+      all.limit(1).first
+    end
+
+    # Retrieve up to the specified number of records without any implicit ordering.
+    #
+    # Examples:
+    #   Customer.take(2)  # => Array of up to 2 Customer records
+    #
+    # SQL: SELECT * FROM customers LIMIT 2
+    def self.take(limit : Int32)
+      all.limit(limit).to_a
+    end
+
+    # Retrieve a record without any implicit ordering. Raises RecordNotFound if no record found.
+    #
+    # Examples:
+    #   Customer.take!  # => Customer or raises RecordNotFound
+    def self.take!
+      take || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+    end
+
+    # Retrieve up to the specified number of records without any implicit ordering.
+    # Raises RecordNotFound if no records found.
+    #
+    # Examples:
+    #   Customer.take!(2)  # => Array of Customer records or raises RecordNotFound
+    def self.take!(limit : Int32)
+      results = take(limit)
+      if results.empty?
+        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      end
+      results
+    end
+
     def self.count
       all.count
     end

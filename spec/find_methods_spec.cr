@@ -176,6 +176,132 @@ describe "Find Methods" do
     end
   end
 
+  describe "take methods" do
+    it "takes a single record without ordering" do
+      user1 = User.new
+      user1.name = "First User"
+      user1.email = "first@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Second User"
+      user2.email = "second@example.com"
+      user2.age = 30
+      user2.save
+
+      taken_user = User.take
+      taken_user.should_not be_nil
+      # Should be one of the created users (order not guaranteed)
+      [user1.id, user2.id].includes?(taken_user.not_nil!.id).should be_true
+    end
+
+    it "returns nil when no records exist for take" do
+      user = User.take
+      user.should be_nil
+    end
+
+    it "takes multiple records without ordering" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      user3 = User.new
+      user3.name = "User Three"
+      user3.email = "three@example.com"
+      user3.age = 35
+      user3.save
+
+      taken_users = User.take(2)
+      taken_users.size.should eq(2)
+      # Should return 2 of the 3 users (order not guaranteed)
+      taken_users.each do |user|
+        [user1.id, user2.id, user3.id].includes?(user.id).should be_true
+      end
+    end
+
+    it "returns empty array when taking from empty table" do
+      users = User.take(3)
+      users.should be_empty
+    end
+
+    it "takes fewer records than requested when table has fewer records" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      users = User.take(3) # Request 3, but only 1 exists
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+  end
+
+  describe "take! methods (with exceptions)" do
+    it "raises RecordNotFound when no records exist for take!" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.take!
+      end
+    end
+
+    it "raises RecordNotFound when no records exist for take!(n)" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.take!(2)
+      end
+    end
+
+    it "returns successful result when records exist for take!" do
+      user = User.new
+      user.name = "Test User"
+      user.email = "test@example.com"
+      user.age = 25
+      user.save
+
+      taken_user = User.take!
+      taken_user.should_not be_nil
+      taken_user.id.should eq(user.id)
+    end
+
+    it "returns successful results when records exist for take!(n)" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      taken_users = User.take!(2)
+      taken_users.size.should eq(2)
+    end
+
+    it "succeeds when taking fewer records than requested with take!(n)" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed even though we request 3 but only 1 exists
+      users = User.take!(3)
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+  end
+
   describe "Edge cases" do
     it "handles empty arrays correctly" do
       users = User.find([] of Int32)
