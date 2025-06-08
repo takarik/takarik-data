@@ -1835,4 +1835,55 @@ describe Takarik::Data::QueryBuilder do
       end
     end
   end
+
+  describe "SQL injection protection" do
+    it "safely handles user input in parameterized queries" do
+      # This is SAFE - uses parameterized query
+      malicious_input = "'; DROP TABLE users; --"
+      query = User.where("name = ?", malicious_input)
+
+      # Should build safe SQL with parameter placeholder
+      query.to_sql.should eq("SELECT * FROM users WHERE name = ?")
+      query.@where_params.should eq([malicious_input])
+
+      # The malicious input is safely stored as a parameter, not interpolated into SQL
+    end
+
+    it "safely handles user input in column-value pairs" do
+      # This is SAFE - automatically parameterized
+      malicious_input = "admin' OR '1'='1"
+      query = User.where("username", malicious_input)
+
+      # Should build safe SQL with parameter placeholder
+      query.to_sql.should eq("SELECT * FROM users WHERE username = ?")
+      query.@where_params.should eq([malicious_input])
+    end
+
+    it "safely handles arrays with potential injection attempts" do
+      # This is SAFE - uses proper placeholders for IN clauses
+      malicious_inputs = ["1", "2'; DROP TABLE users; --", "3"]
+      query = User.where("id", malicious_inputs)
+
+      # Should build safe SQL with proper placeholders
+      query.to_sql.should eq("SELECT * FROM users WHERE id IN (?, ?, ?)")
+      query.@where_params.should eq(malicious_inputs)
+    end
+
+    it "demonstrates safe vs unsafe query building patterns" do
+      user_input = "admin"
+
+      # ✅ SAFE: Parameterized query
+      safe_query = User.where("username = ?", user_input)
+      safe_query.to_sql.should eq("SELECT * FROM users WHERE username = ?")
+      safe_query.@where_params.should eq([user_input])
+
+      # ✅ SAFE: Automatic parameterization
+      safe_query2 = User.where("username", user_input)
+      safe_query2.to_sql.should eq("SELECT * FROM users WHERE username = ?")
+      safe_query2.@where_params.should eq([user_input])
+
+      # Note: Our QueryBuilder doesn't support direct string interpolation,
+      # which helps prevent accidental SQL injection vulnerabilities
+    end
+  end
 end

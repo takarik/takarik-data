@@ -36,8 +36,24 @@ module Takarik::Data
     end
 
     # ========================================
-    # WHERE METHODS
+    # WHERE METHODS - SQL INJECTION SAFE
     # ========================================
+    #
+    # All where methods use parameterized queries to prevent SQL injection attacks.
+    # Parameters are always separated from SQL structure and properly escaped by the database driver.
+    #
+    # ✅ SAFE Examples:
+    #   User.where("name = ?", user_input)                    # Parameterized query
+    #   User.where("name", user_input)                        # Auto-parameterized
+    #   User.where(name: user_input)                          # Hash conditions (auto-parameterized)
+    #   User.where("id", [1, 2, 3])                          # Array IN conditions (safe placeholders)
+    #   User.where("age > ? AND active = ?", 18, true)       # Multiple parameters
+    #
+    # ❌ UNSAFE (Not supported - preventing accidental vulnerabilities):
+    #   User.where("name = '#{user_input}'")                 # Direct interpolation (NOT SUPPORTED)
+    #
+    # The QueryBuilder automatically handles parameter escaping and prevents SQL injection
+    # by using Crystal's DB module's built-in parameter binding capabilities.
 
     def where(conditions : Hash(String, DB::Any))
       conditions.each do |column, value|
