@@ -408,6 +408,10 @@ module Takarik::Data
       query.reverse_order
     end
 
+    def self.none
+      query.none
+    end
+
     def self.having(condition : String)
       query.having(condition)
     end

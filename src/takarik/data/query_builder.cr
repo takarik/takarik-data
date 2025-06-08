@@ -25,6 +25,7 @@ module Takarik::Data
     @offset_value : Int32?
     @distinct = false
     @has_joins = false
+    @none = false
     @includes = [] of String
     @preloads = [] of String
     @eager_loads = [] of String
@@ -44,6 +45,7 @@ module Takarik::Data
       new_query.set_joins(@joins.dup, @has_joins)
       new_query.set_group(@group_clause)
       new_query.set_having_conditions(@having_conditions.dup, @having_params.dup)
+      new_query.set_none(@none)
       # Copy other arrays
       new_query.copy_includes(@includes.dup)
       new_query.copy_preloads(@preloads.dup)
@@ -680,6 +682,11 @@ module Takarik::Data
       self
     end
 
+    def clear_none
+      @none = false
+      self
+    end
+
     def set_where_conditions(conditions : Array(String), params : Array(DB::Any))
       @where_conditions = conditions
       @where_params = params
@@ -743,6 +750,11 @@ module Takarik::Data
       self
     end
 
+    def set_none(none : Bool)
+      @none = none
+      self
+    end
+
     # Getter methods for debugging
     def order_clauses
       @order_clauses
@@ -778,6 +790,8 @@ module Takarik::Data
           new_query.clear_select
         when :distinct
           new_query.clear_distinct
+        when :none
+          new_query.clear_none
         end
       end
 
@@ -943,6 +957,13 @@ module Takarik::Data
     def regroup(columns : Array(Symbol))
       new_query = dup
       new_query.set_group(columns.map(&.to_s).join(", "))
+      new_query
+    end
+
+    # Return an empty relation that fires no queries
+    def none
+      new_query = dup
+      new_query.set_none(true)
       new_query
     end
 
@@ -1123,6 +1144,8 @@ module Takarik::Data
     def to_a
       results = [] of T
 
+      return results if @none
+
       # Check if includes should use JOIN strategy - always true for includes
       use_join_for_includes = @includes.any?
 
@@ -1241,6 +1264,11 @@ module Takarik::Data
     end
 
     def count : Int64 | Hash(String, Int64)
+      # Return 0 or empty hash if this is a none relation
+      if @none
+        return @group_clause ? {} of String => Int64 : 0_i64
+      end
+
       # If there's a GROUP BY clause, return a hash of grouped counts
       if @group_clause
         grouped_count
