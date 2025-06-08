@@ -207,12 +207,20 @@ module Takarik::Data
       query.select(*columns)
     end
 
+    def self.select(*columns : Symbol)
+      query.select(*columns)
+    end
+
     def self.select(columns : Array(String))
       query.select(columns)
     end
 
-    def self.distinct
-      query.distinct
+    def self.select(columns : Array(Symbol))
+      query.select(columns)
+    end
+
+    def self.distinct(value : Bool = true)
+      query.distinct(value)
     end
 
     def self.order(column : Symbol)

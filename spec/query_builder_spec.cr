@@ -468,14 +468,89 @@ describe Takarik::Data::QueryBuilder do
   end
 
   describe "selecting columns" do
-    it "selects specific columns" do
+    it "selects specific columns with strings" do
       query = User.select("name", "email")
       query.to_sql.should contain("SELECT name, email")
     end
 
-    it "selects columns as array" do
+    it "selects specific columns with symbols" do
+      query = User.select(:name, :email)
+      query.to_sql.should contain("SELECT name, email")
+    end
+
+    it "selects columns as string array" do
       query = User.select(["name", "age"])
       query.to_sql.should contain("SELECT name, age")
+    end
+
+    it "selects columns as symbol array" do
+      query = User.select([:name, :age])
+      query.to_sql.should contain("SELECT name, age")
+    end
+
+    it "selects single column with string" do
+      query = User.select("name")
+      query.to_sql.should contain("SELECT name")
+    end
+
+    it "selects single column with symbol" do
+      query = User.select(:name)
+      query.to_sql.should contain("SELECT name")
+    end
+
+    it "supports comma-separated string (ActiveRecord style)" do
+      query = User.select("isbn, out_of_print")
+      query.to_sql.should contain("SELECT isbn, out_of_print")
+    end
+
+    it "works with distinct" do
+      query = User.select(:last_name).distinct
+      query.to_sql.should contain("SELECT DISTINCT last_name")
+    end
+
+    describe "column validation and cleanup" do
+      it "cleans up multiple consecutive commas" do
+        query = User.select("name,,,,,,,, email")
+        query.to_sql.should contain("SELECT name, email")
+      end
+
+      it "removes empty columns from comma-separated list" do
+        query = User.select("name, , , email")
+        query.to_sql.should contain("SELECT name, email")
+      end
+
+      it "handles leading and trailing commas" do
+        query = User.select(",name,email,")
+        query.to_sql.should contain("SELECT name, email")
+      end
+
+      it "trims whitespace from columns" do
+        query = User.select("  name  ,  email  ")
+        query.to_sql.should contain("SELECT name, email")
+      end
+
+      it "raises error for empty string" do
+        expect_raises(ArgumentError, "Invalid select clause: cannot select empty string") do
+          User.select("")
+        end
+      end
+
+      it "raises error for whitespace-only string" do
+        expect_raises(ArgumentError, "Invalid select clause: cannot select empty string") do
+          User.select("   ")
+        end
+      end
+
+      it "raises error for comma-only string" do
+        expect_raises(ArgumentError, "Invalid select clause: no valid columns found") do
+          User.select(",,,,")
+        end
+      end
+
+      it "handles single column with extra whitespace" do
+        query = User.select("  name  ")
+        query.to_sql.should contain("SELECT name")
+      end
     end
   end
 
@@ -485,9 +560,26 @@ describe Takarik::Data::QueryBuilder do
       query.to_sql.should contain("SELECT DISTINCT *")
     end
 
+    it "adds DISTINCT when explicitly set to true" do
+      query = User.distinct(true)
+      query.to_sql.should contain("SELECT DISTINCT *")
+    end
+
+    it "removes DISTINCT when set to false" do
+      query = User.distinct.distinct(false)
+      query.to_sql.should_not contain("DISTINCT")
+      query.to_sql.should contain("SELECT *")
+    end
+
     it "works with select" do
       query = User.select("name").distinct
       query.to_sql.should contain("SELECT DISTINCT name")
+    end
+
+    it "works with select and can be removed" do
+      query = User.select("name").distinct.distinct(false)
+      query.to_sql.should contain("SELECT name")
+      query.to_sql.should_not contain("DISTINCT")
     end
 
     it "works with where conditions" do
@@ -503,6 +595,17 @@ describe Takarik::Data::QueryBuilder do
       sql.should contain("WHERE active = ?")
       sql.should contain("ORDER BY name")
       sql.should contain("LIMIT 10")
+    end
+
+    it "allows toggling distinct on and off in chain" do
+      # Start with distinct, then remove it
+      query = User.select("last_name").distinct.distinct(false)
+      query.to_sql.should contain("SELECT last_name")
+      query.to_sql.should_not contain("DISTINCT")
+
+      # Remove distinct, then add it back
+      query = User.select("last_name").distinct(false).distinct
+      query.to_sql.should contain("SELECT DISTINCT last_name")
     end
   end
 

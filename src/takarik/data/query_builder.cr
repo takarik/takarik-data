@@ -37,7 +37,30 @@ module Takarik::Data
     # ========================================
 
     def select(*columns : String)
-      @select_clause = columns.join(", ")
+      if columns.size == 1
+        column_string = columns[0]
+
+        # Check for empty or whitespace-only strings
+        if column_string.strip.empty?
+          raise ArgumentError.new("Invalid select clause: cannot select empty string")
+        end
+
+        # If it contains commas, treat as comma-separated list
+        if column_string.includes?(",")
+          @select_clause = sanitize_column_list(column_string)
+        else
+          # Single column string
+          @select_clause = column_string.strip
+        end
+      else
+        # Handle multiple string arguments
+        @select_clause = columns.join(", ")
+      end
+      self
+    end
+
+    def select(*columns : Symbol)
+      @select_clause = columns.map(&.to_s).join(", ")
       self
     end
 
@@ -46,8 +69,28 @@ module Takarik::Data
       self
     end
 
-    def distinct
-      @distinct = true
+    def select(columns : Array(Symbol))
+      @select_clause = columns.map(&.to_s).join(", ")
+      self
+    end
+
+    # Private method to clean up comma-separated column lists
+    private def sanitize_column_list(column_string : String) : String
+      # Split by comma, clean each column, filter out empty ones
+      columns = column_string.split(",")
+        .map(&.strip)                    # Remove whitespace
+        .reject(&.empty?)                # Remove empty strings
+        .reject { |col| col.blank? }     # Remove blank strings
+
+      if columns.empty?
+        raise ArgumentError.new("Invalid select clause: no valid columns found in '#{column_string}'")
+      end
+
+      columns.join(", ")
+    end
+
+    def distinct(value : Bool = true)
+      @distinct = value
       self
     end
 
