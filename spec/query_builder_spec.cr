@@ -479,6 +479,33 @@ describe Takarik::Data::QueryBuilder do
     end
   end
 
+  describe "distinct method" do
+    it "adds DISTINCT to query" do
+      query = User.distinct
+      query.to_sql.should contain("SELECT DISTINCT *")
+    end
+
+    it "works with select" do
+      query = User.select("name").distinct
+      query.to_sql.should contain("SELECT DISTINCT name")
+    end
+
+    it "works with where conditions" do
+      query = User.distinct.where(active: true)
+      query.to_sql.should contain("SELECT DISTINCT *")
+      query.to_sql.should contain("WHERE active = ?")
+    end
+
+    it "chains properly" do
+      query = User.distinct.where(active: true).order(:name).limit(10)
+      sql = query.to_sql
+      sql.should contain("SELECT DISTINCT *")
+      sql.should contain("WHERE active = ?")
+      sql.should contain("ORDER BY name")
+      sql.should contain("LIMIT 10")
+    end
+  end
+
   describe "grouping and having" do
     it "groups by columns" do
       query = User.group("active")

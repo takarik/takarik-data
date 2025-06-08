@@ -23,6 +23,7 @@ module Takarik::Data
     @having_params = [] of DB::Any
     @limit_value : Int32?
     @offset_value : Int32?
+    @distinct = false
     @has_joins = false
     @includes = [] of String
     @preloads = [] of String
@@ -42,6 +43,11 @@ module Takarik::Data
 
     def select(columns : Array(String))
       @select_clause = columns.join(", ")
+      self
+    end
+
+    def distinct
+      @distinct = true
       self
     end
 
@@ -651,7 +657,12 @@ module Takarik::Data
       else
         select_part = @select_clause || "*"
       end
-      sql_parts << "SELECT #{select_part}"
+
+      if @distinct
+        sql_parts << "SELECT DISTINCT #{select_part}"
+      else
+        sql_parts << "SELECT #{select_part}"
+      end
 
       # FROM clause
       sql_parts << "FROM #{@model_class.table_name}"

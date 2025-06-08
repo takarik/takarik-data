@@ -206,6 +206,10 @@ module Takarik::Data
       all.select(columns)
     end
 
+    def self.distinct
+      all.distinct
+    end
+
     def self.order(column : Symbol)
       all.order(column)
     end
