@@ -302,6 +302,173 @@ describe "Find Methods" do
     end
   end
 
+  describe "first methods" do
+    it "finds the first record ordered by primary key" do
+      user1 = User.new
+      user1.name = "Second User"
+      user1.email = "second@example.com"
+      user1.age = 30
+      user1.save
+
+      user2 = User.new
+      user2.name = "First User"
+      user2.email = "first@example.com"
+      user2.age = 25
+      user2.save
+
+      # Should return the user with lowest ID (first inserted)
+      first_user = User.first
+      first_user.should_not be_nil
+      first_user.not_nil!.id.should eq(user1.id)
+      first_user.not_nil!.name.should eq("Second User")
+    end
+
+    it "returns nil when no records exist for first" do
+      user = User.first
+      user.should be_nil
+    end
+
+    it "finds multiple records ordered by primary key" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      user3 = User.new
+      user3.name = "User Three"
+      user3.email = "three@example.com"
+      user3.age = 35
+      user3.save
+
+      first_users = User.first(2)
+      first_users.size.should eq(2)
+      # Should return the first 2 users in ID order
+      first_users[0].id.should eq(user1.id)
+      first_users[1].id.should eq(user2.id)
+    end
+
+    it "returns empty array when getting first(n) from empty table" do
+      users = User.first(3)
+      users.should be_empty
+    end
+
+    it "gets fewer records than requested when table has fewer records" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      users = User.first(3) # Request 3, but only 1 exists
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+
+    it "respects existing order from query chain" do
+      user1 = User.new
+      user1.name = "Alpha"
+      user1.email = "alpha@example.com"
+      user1.age = 30
+      user1.save
+
+      user2 = User.new
+      user2.name = "Beta"
+      user2.email = "beta@example.com"
+      user2.age = 25
+      user2.save
+
+      # When ordering by name, Beta should come first
+      first_user = User.order(:name).first
+      first_user.should_not be_nil
+      first_user.not_nil!.name.should eq("Alpha") # Alphabetically first
+    end
+
+    it "works with composite primary keys" do
+      order1 = TestOrder.new
+      order1.shop_id = 2
+      order1.order_id = 100
+      order1.order_number = "ORD-001"
+      order1.total = 99.99
+      order1.save
+
+      order2 = TestOrder.new
+      order2.shop_id = 1
+      order2.order_id = 200
+      order2.order_number = "ORD-002"
+      order2.total = 149.99
+      order2.save
+
+      # Should order by shop_id first, then order_id
+      first_order = TestOrder.first
+      first_order.should_not be_nil
+      first_order.not_nil!.shop_id.should eq(1) # Lower shop_id comes first
+      first_order.not_nil!.order_id.should eq(200)
+    end
+  end
+
+  describe "first! methods (with exceptions)" do
+    it "raises RecordNotFound when no records exist for first!" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.first!
+      end
+    end
+
+    it "raises RecordNotFound when no records exist for first!(n)" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.first!(2)
+      end
+    end
+
+    it "returns successful result when records exist for first!" do
+      user = User.new
+      user.name = "Test User"
+      user.email = "test@example.com"
+      user.age = 25
+      user.save
+
+      first_user = User.first!
+      first_user.should_not be_nil
+      first_user.id.should eq(user.id)
+    end
+
+    it "returns successful results when records exist for first!(n)" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      first_users = User.first!(2)
+      first_users.size.should eq(2)
+    end
+
+    it "succeeds when getting fewer records than requested with first!(n)" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed even though we request 3 but only 1 exists
+      users = User.first!(3)
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+  end
+
   describe "Edge cases" do
     it "handles empty arrays correctly" do
       users = User.find([] of Int32)

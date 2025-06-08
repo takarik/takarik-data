@@ -380,12 +380,79 @@ module Takarik::Data
       find!(ids.to_a)
     end
 
+    # Find the first record ordered by primary key (default).
+    # If default scope contains an order method, returns the first record according to that ordering.
+    #
+    # Examples:
+    #   Customer.first  # => Customer or nil
+    #
+    # SQL: SELECT * FROM customers ORDER BY customers.id ASC LIMIT 1
+    # SQL (composite): SELECT * FROM customers ORDER BY customers.store_id ASC, customers.id ASC LIMIT 1
     def self.first
-      all.first
+      # Check if there's already ordering from default scope or query chain
+      query = all
+
+      # If no existing order, add primary key ordering
+      if query.@order_clauses.empty?
+        # Handle composite primary keys
+        if primary_key.includes?(",")
+          primary_keys = primary_key.split(",").map(&.strip)
+          primary_keys.each do |key|
+            query = query.order(key, "ASC")
+          end
+        else
+          query = query.order(primary_key, "ASC")
+        end
+      end
+
+      query.limit(1).first
     end
 
+    # Find up to the specified number of records ordered by primary key (default).
+    #
+    # Examples:
+    #   Customer.first(3)  # => Array of up to 3 Customer records
+    #
+    # SQL: SELECT * FROM customers ORDER BY customers.id ASC LIMIT 3
+    def self.first(limit : Int32)
+      # Check if there's already ordering from default scope or query chain
+      query = all
+
+      # If no existing order, add primary key ordering
+      if query.@order_clauses.empty?
+        # Handle composite primary keys
+        if primary_key.includes?(",")
+          primary_keys = primary_key.split(",").map(&.strip)
+          primary_keys.each do |key|
+            query = query.order(key, "ASC")
+          end
+        else
+          query = query.order(primary_key, "ASC")
+        end
+      end
+
+      query.limit(limit).to_a
+    end
+
+    # Find the first record ordered by primary key. Raises RecordNotFound if no record found.
+    #
+    # Examples:
+    #   Customer.first!  # => Customer or raises RecordNotFound
     def self.first!
-      all.first!
+      first || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+    end
+
+    # Find up to the specified number of records ordered by primary key.
+    # Raises RecordNotFound if no records found.
+    #
+    # Examples:
+    #   Customer.first!(3)  # => Array of Customer records or raises RecordNotFound
+    def self.first!(limit : Int32)
+      results = first(limit)
+      if results.empty?
+        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      end
+      results
     end
 
     def self.last
