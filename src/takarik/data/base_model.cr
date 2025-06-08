@@ -319,6 +319,18 @@ module Takarik::Data
       query.group(*columns)
     end
 
+    def self.group(*columns : Symbol)
+      query.group(*columns)
+    end
+
+    def self.group(columns : Array(String))
+      query.group(columns)
+    end
+
+    def self.group(columns : Array(Symbol))
+      query.group(columns)
+    end
+
     def self.having(condition : String, *params : DB::Any)
       query.having(condition, *params)
     end
@@ -615,7 +627,7 @@ module Takarik::Data
       results
     end
 
-    def self.count
+    def self.count : Int64 | Hash(String, Int64)
       query.count
     end
 

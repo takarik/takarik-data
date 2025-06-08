@@ -625,8 +625,18 @@ module Takarik::Data
       self
     end
 
+    def group(*columns : Symbol)
+      @group_clause = columns.map(&.to_s).join(", ")
+      self
+    end
+
     def group(columns : Array(String))
       @group_clause = columns.join(", ")
+      self
+    end
+
+    def group(columns : Array(Symbol))
+      @group_clause = columns.map(&.to_s).join(", ")
       self
     end
 
@@ -895,9 +905,12 @@ module Takarik::Data
       results
     end
 
-    def count
-      # If there's a LIMIT clause, we need to count the actual records that would be returned
-      if @limit_value
+    def count : Int64 | Hash(String, Int64)
+      # If there's a GROUP BY clause, return a hash of grouped counts
+      if @group_clause
+        grouped_count
+      elsif @limit_value
+        # If there's a LIMIT clause, we need to count the actual records that would be returned
         to_a.size.to_i64
       else
         original_select = @select_clause
@@ -908,12 +921,70 @@ module Takarik::Data
       end
     end
 
+        # Private method to handle grouped counting
+    private def grouped_count
+      # Build SQL like: SELECT COUNT(*) AS count_all, status AS status FROM orders GROUP BY status
+      group_columns = @group_clause.not_nil!.split(",").map(&.strip)
+
+      # Create the SELECT clause with COUNT(*) and the group columns
+      select_parts = ["COUNT(*) AS count_all"]
+      group_columns.each do |col|
+        select_parts << "#{col} AS #{col}"
+      end
+
+      original_select = @select_clause
+      @select_clause = select_parts.join(", ")
+
+      result_hash = {} of String => Int64
+
+      Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT") do |rs|
+        rs.each do
+          count = rs.read.as(Int64)
+
+          # Handle single or multiple group columns
+          if group_columns.size == 1
+            group_value = rs.read
+            key = group_value.nil? ? "nil" : group_value.to_s
+            result_hash[key] = count
+          else
+            # For multiple columns, create a combined key
+            group_values = [] of String
+            group_columns.size.times do
+              value = rs.read
+              group_values << (value.nil? ? "nil" : value.to_s)
+            end
+            key = group_values.join(", ")
+            result_hash[key] = count
+          end
+        end
+      end
+
+      @select_clause = original_select
+      result_hash
+    end
+
     def exists?
-      count > 0
+      result = count
+      case result
+      when Int64
+        result > 0
+      when Hash(String, Int64)
+        result.any? { |_, v| v > 0 }
+      else
+        false
+      end
     end
 
     def empty?
-      count == 0
+      result = count
+      case result
+      when Int64
+        result == 0
+      when Hash(String, Int64)
+        result.all? { |_, v| v == 0 }
+      else
+        true
+      end
     end
 
     def any?

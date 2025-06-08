@@ -1298,7 +1298,7 @@ describe "dependent associations" do
 
       # Verify posts exist
       user.posts.count.should eq(2)
-      Post.count.should be >= 2
+      Post.count.as(Int64).should be >= 2
 
       # Destroy user - should also destroy associated posts
       user.destroy.should be_true
@@ -1363,7 +1363,7 @@ describe "dependent associations" do
       category.destroy.should be_true
 
       # Verify products still exist but with null category_id
-      ProductNullify.count.should be >= 2  # Products still exist
+      ProductNullify.count.as(Int64).should be >= 2  # Products still exist
       product1.reload
       product2.reload
       product1.category_id.should be_nil
