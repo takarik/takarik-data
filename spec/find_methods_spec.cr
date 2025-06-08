@@ -469,6 +469,173 @@ describe "Find Methods" do
     end
   end
 
+    describe "last methods" do
+    it "finds the last record ordered by primary key" do
+      user1 = User.new
+      user1.name = "First User"
+      user1.email = "first@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Second User"
+      user2.email = "second@example.com"
+      user2.age = 30
+      user2.save
+
+      # Should return the user with highest ID (last inserted)
+      last_user = User.last
+      last_user.should_not be_nil
+      last_user.not_nil!.id.should eq(user2.id)
+      last_user.not_nil!.name.should eq("Second User")
+    end
+
+    it "returns nil when no records exist for last" do
+      user = User.last
+      user.should be_nil
+    end
+
+    it "finds multiple records ordered by primary key (highest first)" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      user3 = User.new
+      user3.name = "User Three"
+      user3.email = "three@example.com"
+      user3.age = 35
+      user3.save
+
+      last_users = User.last(2)
+      last_users.size.should eq(2)
+      # Should return the last 2 users in reverse ID order (highest first)
+      last_users[0].id.should eq(user3.id)
+      last_users[1].id.should eq(user2.id)
+    end
+
+    it "returns empty array when getting last(n) from empty table" do
+      users = User.last(3)
+      users.should be_empty
+    end
+
+    it "gets fewer records than requested when table has fewer records" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      users = User.last(3) # Request 3, but only 1 exists
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+
+    it "respects existing order from query chain and reverses it" do
+      user1 = User.new
+      user1.name = "Alpha"
+      user1.email = "alpha@example.com"
+      user1.age = 30
+      user1.save
+
+      user2 = User.new
+      user2.name = "Zeta"
+      user2.email = "zeta@example.com"
+      user2.age = 25
+      user2.save
+
+      # When ordering by name ASC, last should reverse to DESC and get Zeta
+      last_user = User.order(:name).last
+      last_user.should_not be_nil
+      last_user.not_nil!.name.should eq("Zeta") # Alphabetically last
+    end
+
+    it "works with composite primary keys" do
+      order1 = TestOrder.new
+      order1.shop_id = 1
+      order1.order_id = 100
+      order1.order_number = "ORD-001"
+      order1.total = 99.99
+      order1.save
+
+      order2 = TestOrder.new
+      order2.shop_id = 2
+      order2.order_id = 200
+      order2.order_number = "ORD-002"
+      order2.total = 149.99
+      order2.save
+
+      # Should order by shop_id DESC first, then order_id DESC
+      last_order = TestOrder.last
+      last_order.should_not be_nil
+      last_order.not_nil!.shop_id.should eq(2) # Higher shop_id comes first
+      last_order.not_nil!.order_id.should eq(200)
+    end
+  end
+
+  describe "last! methods (with exceptions)" do
+    it "raises RecordNotFound when no records exist for last!" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.last!
+      end
+    end
+
+    it "raises RecordNotFound when no records exist for last!(n)" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.last!(2)
+      end
+    end
+
+    it "returns successful result when records exist for last!" do
+      user = User.new
+      user.name = "Test User"
+      user.email = "test@example.com"
+      user.age = 25
+      user.save
+
+      last_user = User.last!
+      last_user.should_not be_nil
+      last_user.id.should eq(user.id)
+    end
+
+    it "returns successful results when records exist for last!(n)" do
+      user1 = User.new
+      user1.name = "User One"
+      user1.email = "one@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "User Two"
+      user2.email = "two@example.com"
+      user2.age = 30
+      user2.save
+
+      last_users = User.last!(2)
+      last_users.size.should eq(2)
+    end
+
+    it "succeeds when getting fewer records than requested with last!(n)" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed even though we request 3 but only 1 exists
+      users = User.last!(3)
+      users.size.should eq(1)
+      users.first.id.should eq(user.id)
+    end
+  end
+
   describe "Edge cases" do
     it "handles empty arrays correctly" do
       users = User.find([] of Int32)

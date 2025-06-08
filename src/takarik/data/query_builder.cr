@@ -466,6 +466,39 @@ module Takarik::Data
       self
     end
 
+        # Create a new query with reversed ordering
+    def reverse_order
+      new_query = dup
+
+      reversed_order = @order_clauses.map do |clause|
+        if clause.ends_with?(" ASC")
+          clause.gsub(" ASC", " DESC")
+        elsif clause.ends_with?(" DESC")
+          clause.gsub(" DESC", " ASC")
+        else
+          # If no explicit direction, assume ASC and reverse to DESC
+          "#{clause} DESC"
+        end
+      end
+
+      # Clear existing order and add reversed order
+      new_query.clear_order
+      reversed_order.each { |clause| new_query.add_order_clause(clause) }
+      new_query
+    end
+
+    # Helper method to clear order clauses
+    def clear_order
+      @order_clauses.clear
+      self
+    end
+
+    # Helper method to add order clause
+    def add_order_clause(clause : String)
+      @order_clauses << clause
+      self
+    end
+
     # ========================================
     # GROUP BY METHODS
     # ========================================

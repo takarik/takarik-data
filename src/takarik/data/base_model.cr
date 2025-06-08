@@ -455,8 +455,83 @@ module Takarik::Data
       results
     end
 
+    # Find the last record ordered by primary key (default).
+    # If default scope contains an order method, returns the last record according to that ordering.
+    #
+    # Examples:
+    #   Customer.last  # => Customer or nil
+    #
+    # SQL: SELECT * FROM customers ORDER BY customers.id DESC LIMIT 1
+    # SQL (composite): SELECT * FROM customers ORDER BY customers.store_id DESC, customers.id DESC LIMIT 1
     def self.last
-      all.order(primary_key, "DESC").first
+      # Check if there's already ordering from default scope or query chain
+      query = all
+
+      if query.@order_clauses.empty?
+        # No existing order, add primary key ordering (DESC for last)
+        if primary_key.includes?(",")
+          primary_keys = primary_key.split(",").map(&.strip)
+          primary_keys.each do |key|
+            query = query.order(key, "DESC")
+          end
+        else
+          query = query.order(primary_key, "DESC")
+        end
+      else
+        # There's existing order, reverse it for last
+        query = query.reverse_order
+      end
+
+      query.limit(1).first
+    end
+
+    # Find up to the specified number of records ordered by primary key (default) in reverse.
+    #
+    # Examples:
+    #   Customer.last(3)  # => Array of up to 3 Customer records (highest IDs first)
+    #
+    # SQL: SELECT * FROM customers ORDER BY customers.id DESC LIMIT 3
+    def self.last(limit : Int32)
+      # Check if there's already ordering from default scope or query chain
+      query = all
+
+      if query.@order_clauses.empty?
+        # No existing order, add primary key ordering (DESC for last)
+        if primary_key.includes?(",")
+          primary_keys = primary_key.split(",").map(&.strip)
+          primary_keys.each do |key|
+            query = query.order(key, "DESC")
+          end
+        else
+          query = query.order(primary_key, "DESC")
+        end
+      else
+        # There's existing order, reverse it for last
+        query = query.reverse_order
+      end
+
+      query.limit(limit).to_a
+    end
+
+    # Find the last record ordered by primary key. Raises RecordNotFound if no record found.
+    #
+    # Examples:
+    #   Customer.last!  # => Customer or raises RecordNotFound
+    def self.last!
+      last || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+    end
+
+    # Find up to the specified number of records ordered by primary key in reverse.
+    # Raises RecordNotFound if no records found.
+    #
+    # Examples:
+    #   Customer.last!(3)  # => Array of Customer records or raises RecordNotFound
+    def self.last!(limit : Int32)
+      results = last(limit)
+      if results.empty?
+        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      end
+      results
     end
 
     # Retrieve a record without any implicit ordering. Returns nil if no record found.
