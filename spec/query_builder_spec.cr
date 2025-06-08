@@ -1886,4 +1886,136 @@ describe Takarik::Data::QueryBuilder do
       # which helps prevent accidental SQL injection vulnerabilities
     end
   end
+
+  # ========================================
+  # NAMED PLACEHOLDER CONDITIONS TESTS
+  # ========================================
+
+  describe "named placeholder conditions" do
+    it "supports basic named placeholders" do
+      query = User.where("name = :name AND age > :min_age", {name: "Alice", min_age: 25})
+      query.to_sql.should contain("name = ? AND age > ?")
+      query.params.should eq(["Alice", 25])
+    end
+
+    it "supports named placeholders with NamedTuple syntax" do
+      query = User.where("name = :name AND age > :min_age", {name: "Bob", min_age: 30})
+      query.to_sql.should contain("name = ? AND age > ?")
+      query.params.should eq(["Bob", 30])
+    end
+
+    it "handles date range with named placeholders" do
+      start_date = Time.utc(2023, 1, 1)
+      end_date = Time.utc(2023, 12, 31)
+
+      query = User.where("created_at >= :start_date AND created_at <= :end_date",
+        {start_date: start_date, end_date: end_date})
+
+      query.to_sql.should contain("created_at >= ? AND created_at <= ?")
+      query.params.should eq([start_date, end_date])
+    end
+
+    it "supports mixed named placeholders and standard conditions" do
+      query = User.where("name = :name", {name: "Charlie"})
+        .where(active: true)
+        .where("age >= ?", 18)
+
+      sql = query.to_sql
+      sql.should contain("name = ?")
+      sql.should contain("active = ?")
+      sql.should contain("age >= ?")
+      query.params.should eq(["Charlie", true, 18])
+    end
+
+    it "works with complex named placeholder queries" do
+      query = User.where("(name LIKE :name_pattern OR email LIKE :email_pattern) AND age BETWEEN :min_age AND :max_age",
+        {name_pattern: "A%", email_pattern: "%@test.com", min_age: 20, max_age: 50})
+
+      query.to_sql.should contain("(name LIKE ? OR email LIKE ?) AND age BETWEEN ? AND ?")
+      query.params.should eq(["A%", "%@test.com", 20, 50])
+    end
+
+    it "handles duplicate named parameters correctly" do
+      query = User.where("name = :value OR email = :value", {value: "test"})
+
+      query.to_sql.should contain("name = ? OR email = ?")
+      query.params.should eq(["test", "test"])
+    end
+
+    it "ignores unused named parameters" do
+      query = User.where("name = :name", {name: "Alice", unused: "ignored"})
+
+      query.to_sql.should contain("name = ?")
+      query.params.should eq(["Alice"])
+    end
+  end
+
+  # ========================================
+  # LIKE SANITIZATION TESTS
+  # ========================================
+
+  describe "LIKE query sanitization" do
+    describe "sanitize_sql_like" do
+      it "escapes percent signs" do
+        sanitize_sql_like("test%value").should eq("test\\%value")
+      end
+
+      it "escapes underscores" do
+        sanitize_sql_like("test_value").should eq("test\\_value")
+      end
+
+      it "escapes both wildcards" do
+        sanitize_sql_like("test_%_value%").should eq("test\\_\\%\\_value\\%")
+      end
+
+      it "leaves normal text unchanged" do
+        sanitize_sql_like("normal text").should eq("normal text")
+      end
+
+      it "handles empty strings" do
+        sanitize_sql_like("").should eq("")
+      end
+
+      it "handles strings with only wildcards" do
+        sanitize_sql_like("_%_%").should eq("\\_\\%\\_\\%")
+      end
+    end
+  end
+
+  # ========================================
+  # SECURITY TESTS FOR NEW FEATURES
+  # ========================================
+
+  describe "security with new features" do
+    it "protects against injection in named placeholders" do
+      malicious_input = "'; DROP TABLE users; --"
+
+      query = User.where("name = :name", {name: malicious_input})
+      query.to_sql.should contain("name = ?")
+      query.params.should eq([malicious_input])
+    end
+
+    it "protects against injection in LIKE patterns" do
+      malicious_input = "'; DROP TABLE users; --"
+
+      # Manual LIKE query with sanitization
+      pattern = sanitize_sql_like(malicious_input) + "%"
+      query = User.where("name LIKE ?", pattern)
+      query.to_sql.should contain("name LIKE ?")
+      query.params.should eq(["'; DROP TABLE users; --%"])
+    end
+
+    it "prevents wildcard injection in LIKE queries" do
+      user_input = "test_%_pattern"
+
+      # Without sanitization, this would match unexpected records
+      pattern = sanitize_sql_like(user_input) + "%"
+      query = User.where("name LIKE ?", pattern)
+      query.params.should eq(["test\\_\\%\\_pattern%"])
+
+      # Verify the wildcards are escaped
+      query.params[0].as(String).should contain("\\_")
+      query.params[0].as(String).should contain("\\%")
+    end
+  end
 end

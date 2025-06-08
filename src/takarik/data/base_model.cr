@@ -127,6 +127,19 @@ module Takarik::Data
       all.where(column, values)
     end
 
+    # Named placeholder conditions
+    def self.where(condition : String, named_params : Hash(String, DB::Any))
+      all.where(condition, named_params)
+    end
+
+    def self.where(condition : String, named_params : NamedTuple)
+      all.where(condition, named_params)
+    end
+
+    def self.where(condition : String, **named_params)
+      all.where(condition, **named_params)
+    end
+
     # New clean syntax methods
     def self.not(conditions : Hash(String, DB::Any))
       all.not(conditions)

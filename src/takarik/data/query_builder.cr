@@ -1,5 +1,15 @@
 require "set"
 
+# ========================================
+# GLOBAL SQL UTILITIES
+# ========================================
+
+# Sanitizes SQL LIKE wildcards (% and _) to prevent unexpected behavior
+# Usage: User.where("title LIKE ?", sanitize_sql_like(params[:title]) + "%")
+def sanitize_sql_like(input : String) : String
+  input.gsub("%", "\\%").gsub("_", "\\_")
+end
+
 module Takarik::Data
   class QueryBuilder(T)
     @model_class : T.class
@@ -75,6 +85,11 @@ module Takarik::Data
       where(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
     end
 
+    # Named placeholder conditions - must come before variadic method for proper resolution
+    def where(condition : String, **named_params)
+      where(condition, named_params.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+    end
+
     def where(condition : String, *params : DB::Any)
       @where_conditions << condition
       @where_params.concat(params.to_a)
@@ -105,6 +120,43 @@ module Takarik::Data
       @where_conditions << "#{column} IN (#{placeholders})"
       @where_params.concat(values)
       self
+    end
+
+    # ========================================
+    # NAMED PLACEHOLDER CONDITIONS
+    # ========================================
+
+    # Support for named placeholder conditions like:
+    #   User.where("name = :name AND age > :min_age", {name: "John", min_age: 18})
+    #   User.where("created_at >= :start_date AND created_at <= :end_date", {start_date: params[:start_date], end_date: params[:end_date]})
+    def where(condition : String, named_params : Hash(String, DB::Any))
+      # Replace named parameters with ? placeholders
+      processed_condition = condition
+      param_values = [] of DB::Any
+
+      # Process named parameters in order they appear in the condition string
+      # We need to handle duplicate placeholders correctly
+      named_params.each do |name, value|
+        placeholder = ":#{name}"
+        while processed_condition.includes?(placeholder)
+          processed_condition = processed_condition.sub(placeholder, "?")
+          param_values << value
+        end
+      end
+
+      @where_conditions << processed_condition
+      @where_params.concat(param_values)
+      self
+    end
+
+    # Support for NamedTuple syntax: User.where("name = :name", {name: "Alice"})
+    def where(condition : String, named_params : NamedTuple)
+      # Convert NamedTuple to Hash
+      hash_params = {} of String => DB::Any
+      named_params.each do |key, value|
+        hash_params[key.to_s] = value.as(DB::Any)
+      end
+      where(condition, hash_params)
     end
 
     # ========================================
@@ -662,6 +714,11 @@ module Takarik::Data
       end
 
       sql_parts.join(" ")
+    end
+
+    # Expose query parameters for testing and debugging
+    def params
+      combined_params
     end
 
     def to_a
