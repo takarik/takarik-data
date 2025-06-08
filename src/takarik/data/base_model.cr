@@ -98,7 +98,8 @@ module Takarik::Data
       QueryBuilder(self).new(self)
     end
 
-    def self.all
+    # Internal query method - users should use all() instead
+    protected def self.query
       apply_default_scope_if_exists
     end
 
@@ -107,211 +108,215 @@ module Takarik::Data
       unscoped
     end
 
+    def self.all
+      query
+    end
+
     def self.where(conditions : Hash(String, DB::Any))
-      all.where(conditions)
+      query.where(conditions)
     end
 
     def self.where(**conditions)
-      all.where(**conditions)
+      query.where(**conditions)
     end
 
     def self.where(condition : String, *params : DB::Any)
-      all.where(condition, *params)
+      query.where(condition, *params)
     end
 
     def self.where(column_with_operator : String, value : DB::Any)
-      all.where(column_with_operator, value)
+      query.where(column_with_operator, value)
     end
 
     def self.where(column : String, values : Array(DB::Any))
-      all.where(column, values)
+      query.where(column, values)
     end
 
     # Named placeholder conditions
     def self.where(condition : String, named_params : Hash(String, DB::Any))
-      all.where(condition, named_params)
+      query.where(condition, named_params)
     end
 
     def self.where(condition : String, named_params : NamedTuple)
-      all.where(condition, named_params)
+      query.where(condition, named_params)
     end
 
     def self.where(condition : String, **named_params)
-      all.where(condition, **named_params)
+      query.where(condition, **named_params)
     end
 
     # New clean syntax methods
     def self.not(conditions : Hash(String, DB::Any))
-      all.not(conditions)
+      query.not(conditions)
     end
 
     def self.not(**conditions)
-      all.not(**conditions)
+      query.not(**conditions)
     end
 
     def self.not(column : String, values : Array(DB::Any))
-      all.not(column, values)
+      query.not(column, values)
     end
 
     def self.not(condition : String, param : DB::Any)
-      all.not(condition, param)
+      query.not(condition, param)
     end
 
     def self.not(condition : String, *params : DB::Any)
-      all.not(condition, *params)
+      query.not(condition, *params)
     end
 
     def self.not(column_with_operator : String, value : DB::Any)
-      all.not(column_with_operator, value)
+      query.not(column_with_operator, value)
     end
 
     def self.associated(association_name : String | Symbol)
-      all.associated(association_name)
+      query.associated(association_name)
     end
 
     def self.missing(association_name : String | Symbol)
-      all.missing(association_name)
+      query.missing(association_name)
     end
 
     # Logical operator methods
     def self.or(conditions : Hash(String, DB::Any))
-      all.or(conditions)
+      query.or(conditions)
     end
 
     def self.or(**conditions)
-      all.or(**conditions)
+      query.or(**conditions)
     end
 
     def self.or(condition : String, param : DB::Any)
-      all.or(condition, param)
+      query.or(condition, param)
     end
 
     def self.or(condition : String, *params : DB::Any)
-      all.or(condition, *params)
+      query.or(condition, *params)
     end
 
     def self.or(column_with_operator : String, value : DB::Any)
-      all.or(column_with_operator, value)
+      query.or(column_with_operator, value)
     end
 
     def self.or(column : String, values : Array(DB::Any))
-      all.or(column, values)
+      query.or(column, values)
     end
 
     def self.select(*columns : String)
-      all.select(*columns)
+      query.select(*columns)
     end
 
     def self.select(columns : Array(String))
-      all.select(columns)
+      query.select(columns)
     end
 
     def self.distinct
-      all.distinct
+      query.distinct
     end
 
     def self.order(column : Symbol)
-      all.order(column)
+      query.order(column)
     end
 
     def self.order(column : String, direction : String = "ASC")
-      all.order(column, direction)
+      query.order(column, direction)
     end
 
     def self.order(**columns)
-      all.order(**columns)
+      query.order(**columns)
     end
 
     def self.order(order_hash : Hash(Symbol | String, Hash(Symbol | String, Symbol | String) | Symbol | String))
-      all.order(order_hash)
+      query.order(order_hash)
     end
 
     def self.order(*columns : String)
-      all.order(*columns)
+      query.order(*columns)
     end
 
     def self.order(first_column : Symbol, **additional_columns)
-      all.order(first_column, **additional_columns)
+      query.order(first_column, **additional_columns)
     end
 
     def self.order(columns : Array(String))
-      all.order(columns)
+      query.order(columns)
     end
 
     def self.limit(count : Int32)
-      all.limit(count)
+      query.limit(count)
     end
 
     def self.offset(count : Int32)
-      all.offset(count)
+      query.offset(count)
     end
 
     def self.join(table : String, on : String)
-      all.join(table, on)
+      query.join(table, on)
     end
 
     def self.join(association_name : String | Symbol)
-      all.join(association_name)
+      query.join(association_name)
     end
 
     def self.inner_join(table : String, on : String)
-      all.inner_join(table, on)
+      query.inner_join(table, on)
     end
 
     def self.inner_join(association_name : String | Symbol)
-      all.inner_join(association_name)
+      query.inner_join(association_name)
     end
 
     def self.left_join(table : String, on : String)
-      all.left_join(table, on)
+      query.left_join(table, on)
     end
 
     def self.left_join(association_name : String | Symbol)
-      all.left_join(association_name)
+      query.left_join(association_name)
     end
 
     def self.right_join(table : String, on : String)
-      all.right_join(table, on)
+      query.right_join(table, on)
     end
 
     def self.right_join(association_name : String | Symbol)
-      all.right_join(association_name)
+      query.right_join(association_name)
     end
 
     def self.includes(*association_names : String | Symbol)
-      all.includes(*association_names)
+      query.includes(*association_names)
     end
 
     def self.includes(association_names : Array(String | Symbol))
-      all.includes(association_names)
+      query.includes(association_names)
     end
 
     def self.preload(*association_names : String | Symbol)
-      all.preload(*association_names)
+      query.preload(*association_names)
     end
 
     def self.preload(association_names : Array(String | Symbol))
-      all.preload(association_names)
+      query.preload(association_names)
     end
 
     def self.eager_load(*association_names : String | Symbol)
-      all.eager_load(*association_names)
+      query.eager_load(*association_names)
     end
 
     def self.eager_load(association_names : Array(String | Symbol))
-      all.eager_load(association_names)
+      query.eager_load(association_names)
     end
 
     def self.group(*columns : String)
-      all.group(*columns)
+      query.group(*columns)
     end
 
     def self.having(condition : String, *params : DB::Any)
-      all.having(condition, *params)
+      query.having(condition, *params)
     end
 
     def self.page(page_number : Int32, per_page : Int32)
-      all.page(page_number, per_page)
+      query.page(page_number, per_page)
     end
 
     # ========================================
@@ -319,19 +324,19 @@ module Takarik::Data
     # ========================================
 
     def self.sum(column : String)
-      all.sum(column)
+      query.sum(column)
     end
 
     def self.average(column : String)
-      all.average(column)
+      query.average(column)
     end
 
     def self.minimum(column : String)
-      all.minimum(column)
+      query.minimum(column)
     end
 
     def self.maximum(column : String)
-      all.maximum(column)
+      query.maximum(column)
     end
 
     # ========================================
@@ -345,7 +350,7 @@ module Takarik::Data
     #
     # SQL: SELECT * FROM customers WHERE (customers.id = 10) LIMIT 1
     def self.find(id : DB::Any)
-      all.where(primary_key, id).first
+      query.where(primary_key, id).first
     end
 
     # Find multiple records by array of primary keys. Returns array of records.
@@ -358,7 +363,7 @@ module Takarik::Data
     def self.find(ids : Array)
       return [] of self if ids.empty?
 
-      results = all.where(primary_key, ids).to_a
+      results = query.where(primary_key, ids).to_a
 
       # Check if all IDs were found
       if results.size != ids.size
@@ -417,22 +422,22 @@ module Takarik::Data
     # SQL (composite): SELECT * FROM customers ORDER BY customers.store_id ASC, customers.id ASC LIMIT 1
     def self.first
       # Check if there's already ordering from default scope or query chain
-      query = all
+      query_builder = query
 
       # If no existing order, add primary key ordering
-      if query.@order_clauses.empty?
+      if query_builder.@order_clauses.empty?
         # Handle composite primary keys
         if primary_key.includes?(",")
           primary_keys = primary_key.split(",").map(&.strip)
           primary_keys.each do |key|
-            query = query.order(key, "ASC")
+            query_builder = query_builder.order(key, "ASC")
           end
         else
-          query = query.order(primary_key, "ASC")
+          query_builder = query_builder.order(primary_key, "ASC")
         end
       end
 
-      query.limit(1).first
+      query_builder.limit(1).first
     end
 
     # Find up to the specified number of records ordered by primary key (default).
@@ -443,22 +448,22 @@ module Takarik::Data
     # SQL: SELECT * FROM customers ORDER BY customers.id ASC LIMIT 3
     def self.first(limit : Int32)
       # Check if there's already ordering from default scope or query chain
-      query = all
+      query_builder = query
 
       # If no existing order, add primary key ordering
-      if query.@order_clauses.empty?
+      if query_builder.@order_clauses.empty?
         # Handle composite primary keys
         if primary_key.includes?(",")
           primary_keys = primary_key.split(",").map(&.strip)
           primary_keys.each do |key|
-            query = query.order(key, "ASC")
+            query_builder = query_builder.order(key, "ASC")
           end
         else
-          query = query.order(primary_key, "ASC")
+          query_builder = query_builder.order(primary_key, "ASC")
         end
       end
 
-      query.limit(limit).to_a
+      query_builder.limit(limit).to_a
     end
 
     # Find the first record ordered by primary key. Raises RecordNotFound if no record found.
@@ -492,24 +497,24 @@ module Takarik::Data
     # SQL (composite): SELECT * FROM customers ORDER BY customers.store_id DESC, customers.id DESC LIMIT 1
     def self.last
       # Check if there's already ordering from default scope or query chain
-      query = all
+      query_builder = query
 
-      if query.@order_clauses.empty?
+      if query_builder.@order_clauses.empty?
         # No existing order, add primary key ordering (DESC for last)
         if primary_key.includes?(",")
           primary_keys = primary_key.split(",").map(&.strip)
           primary_keys.each do |key|
-            query = query.order(key, "DESC")
+            query_builder = query_builder.order(key, "DESC")
           end
         else
-          query = query.order(primary_key, "DESC")
+          query_builder = query_builder.order(primary_key, "DESC")
         end
       else
         # There's existing order, reverse it for last
-        query = query.reverse_order
+        query_builder = query_builder.reverse_order
       end
 
-      query.limit(1).first
+      query_builder.limit(1).first
     end
 
     # Find up to the specified number of records ordered by primary key (default) in reverse.
@@ -520,24 +525,24 @@ module Takarik::Data
     # SQL: SELECT * FROM customers ORDER BY customers.id DESC LIMIT 3
     def self.last(limit : Int32)
       # Check if there's already ordering from default scope or query chain
-      query = all
+      query_builder = query
 
-      if query.@order_clauses.empty?
+      if query_builder.@order_clauses.empty?
         # No existing order, add primary key ordering (DESC for last)
         if primary_key.includes?(",")
           primary_keys = primary_key.split(",").map(&.strip)
           primary_keys.each do |key|
-            query = query.order(key, "DESC")
+            query_builder = query_builder.order(key, "DESC")
           end
         else
-          query = query.order(primary_key, "DESC")
+          query_builder = query_builder.order(primary_key, "DESC")
         end
       else
         # There's existing order, reverse it for last
-        query = query.reverse_order
+        query_builder = query_builder.reverse_order
       end
 
-      query.limit(limit).to_a
+      query_builder.limit(limit).to_a
     end
 
     # Find the last record ordered by primary key. Raises RecordNotFound if no record found.
@@ -568,7 +573,7 @@ module Takarik::Data
     #
     # SQL: SELECT * FROM customers LIMIT 1
     def self.take
-      all.limit(1).first
+      query.limit(1).first
     end
 
     # Retrieve up to the specified number of records without any implicit ordering.
@@ -578,7 +583,7 @@ module Takarik::Data
     #
     # SQL: SELECT * FROM customers LIMIT 2
     def self.take(limit : Int32)
-      all.limit(limit).to_a
+      query.limit(limit).to_a
     end
 
     # Retrieve a record without any implicit ordering. Raises RecordNotFound if no record found.
@@ -603,7 +608,7 @@ module Takarik::Data
     end
 
     def self.count
-      all.count
+      query.count
     end
 
     # Find the first record matching the given conditions without any implicit ordering.
@@ -667,7 +672,7 @@ module Takarik::Data
     def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
                        order : Symbol | Array(Symbol) = :asc, &block : self ->)
-      all.find_each(start: start, finish: finish, batch_size: batch_size,
+      query.find_each(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
     end
 
@@ -675,7 +680,7 @@ module Takarik::Data
     def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
                        order : Symbol | Array(Symbol) = :asc)
-      all.find_each(start: start, finish: finish, batch_size: batch_size,
+      query.find_each(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order)
     end
 
@@ -692,7 +697,7 @@ module Takarik::Data
     def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
                              error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
                              order : Symbol | Array(Symbol) = :asc, &block : Array(self) ->)
-      all.find_in_batches(start: start, finish: finish, batch_size: batch_size,
+      query.find_in_batches(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
     end
 
@@ -700,7 +705,7 @@ module Takarik::Data
     def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
                             error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
                             order : Symbol | Array(Symbol) = :asc)
-      all.find_in_batches(start: start, finish: finish, batch_size: batch_size,
+      query.find_in_batches(start: start, finish: finish, batch_size: batch_size,
                          error_on_ignore: error_on_ignore, cursor: cursor, order: order)
     end
 
@@ -1689,7 +1694,7 @@ module Takarik::Data
             conditions[key] = composite_key[index].as(DB::Any)
           end
 
-          all.where(conditions).first
+          query.where(conditions).first
         end
 
         def self.find(composite_keys : Array(Array))
@@ -2474,19 +2479,19 @@ module Takarik::Data
         # ========================================
 
         def self.where(condition : String, param : {{type}})
-          all.where(condition, param)
+          query.where(condition, param)
         end
 
         def self.where(condition : String, *params : {{type}})
-          all.where(condition, *params)
+          query.where(condition, *params)
         end
 
         def self.where(column : String, values : Array({{type}}))
-          all.where(column, values)
+          query.where(column, values)
         end
 
         def self.where(column_with_operator : String, value : {{type}})
-          all.where(column_with_operator, value)
+          query.where(column_with_operator, value)
         end
 
         # ========================================
@@ -2494,19 +2499,19 @@ module Takarik::Data
         # ========================================
 
         def self.not(condition : String, param : {{type}})
-          all.not(condition, param)
+          query.not(condition, param)
         end
 
         def self.not(condition : String, *params : {{type}})
-          all.not(condition, *params)
+          query.not(condition, *params)
         end
 
         def self.not(column_with_operator : String, value : {{type}})
-          all.not(column_with_operator, value)
+          query.not(column_with_operator, value)
         end
 
         def self.not(column : String, values : Array({{type}}))
-          all.not(column, values)
+          query.not(column, values)
         end
 
         # ========================================
@@ -2514,19 +2519,19 @@ module Takarik::Data
         # ========================================
 
         def self.or(condition : String, param : {{type}})
-          all.or(condition, param)
+          query.or(condition, param)
         end
 
         def self.or(condition : String, *params : {{type}})
-          all.or(condition, *params)
+          query.or(condition, *params)
         end
 
         def self.or(column_with_operator : String, value : {{type}})
-          all.or(column_with_operator, value)
+          query.or(column_with_operator, value)
         end
 
         def self.or(column : String, values : Array({{type}}))
-          all.or(column, values)
+          query.or(column, values)
         end
       {% end %}
 
@@ -2536,15 +2541,15 @@ module Takarik::Data
 
       {% for type in [Int32, Int64, Float32, Float64, Time, String] %}
         def self.where(column : String, range : Range({{type}}, {{type}}))
-          all.where(column, range)
+          query.where(column, range)
         end
 
         def self.not(column : String, range : Range({{type}}, {{type}}))
-          all.not(column, range)
+          query.not(column, range)
         end
 
         def self.or(column : String, range : Range({{type}}, {{type}}))
-          all.or(column, range)
+          query.or(column, range)
         end
       {% end %}
     end
