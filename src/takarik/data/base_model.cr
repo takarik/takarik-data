@@ -620,6 +620,74 @@ module Takarik::Data
     end
 
     # ========================================
+    # CLASS METHODS - BATCH PROCESSING
+    # ========================================
+
+    # Retrieve records in batches and yield each one to the block.
+    # This is efficient for processing large datasets without loading everything into memory.
+    #
+    # Examples:
+    #   Customer.find_each do |customer|
+    #     NewsMailer.weekly(customer).deliver_now
+    #   end
+    #
+    #   Customer.find_each(start: 2000, batch_size: 5000) do |customer|
+    #     process_customer(customer)
+    #   end
+    #
+    #   # For composite primary keys
+    #   Order.find_each(order: [:asc, :desc]) do |order|
+    #     process_order(order)
+    #   end
+    #
+    # Options:
+    #   :start - Starting cursor value (inclusive)
+    #   :finish - Ending cursor value (inclusive)
+    #   :batch_size - Number of records per batch (default: 1000)
+    #   :error_on_ignore - Raise error if existing order is present (default: nil)
+    #   :cursor - Column(s) to use for batching (default: primary_key)
+    #   :order - Cursor order (:asc/:desc or array like [:asc, :desc], default: :asc)
+    def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                       error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                       order : Symbol | Array(Symbol) = :asc, &block : self ->)
+      all.find_each(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
+    end
+
+    # Returns an Enumerator when no block is given
+    def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                       error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                       order : Symbol | Array(Symbol) = :asc)
+      all.find_each(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order)
+    end
+
+    # Yields each batch of records as an array.
+    #
+    # Examples:
+    #   Customer.find_in_batches do |batch|
+    #     batch.each { |customer| NewsMailer.weekly(customer).deliver_now }
+    #   end
+    #
+    #   Customer.find_in_batches(start: 1000, batch_size: 500) do |batch|
+    #     batch.each { |customer| process_customer(customer) }
+    #   end
+    def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                             error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                             order : Symbol | Array(Symbol) = :asc, &block : Array(self) ->)
+      all.find_in_batches(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
+    end
+
+        # Returns an Enumerator when no block is given
+    def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                            error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                            order : Symbol | Array(Symbol) = :asc)
+      all.find_in_batches(start: start, finish: finish, batch_size: batch_size,
+                         error_on_ignore: error_on_ignore, cursor: cursor, order: order)
+    end
+
+    # ========================================
     # INSTANCE METHODS - ID VALUE ACCESS
     # ========================================
 

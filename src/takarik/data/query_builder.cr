@@ -466,7 +466,7 @@ module Takarik::Data
       self
     end
 
-        # Create a new query with reversed ordering
+    # Create a new query with reversed ordering
     def reverse_order
       new_query = dup
 
@@ -769,11 +769,16 @@ module Takarik::Data
     end
 
     def count
-      original_select = @select_clause
-      @select_clause = "COUNT(*)"
-      result = Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT").as(Int64)
-      @select_clause = original_select
-      result
+      # If there's a LIMIT clause, we need to count the actual records that would be returned
+      if @limit_value
+        to_a.size.to_i64
+      else
+        original_select = @select_clause
+        @select_clause = "COUNT(*)"
+        result = Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT").as(Int64)
+        @select_clause = original_select
+        result
+      end
     end
 
     def exists?
@@ -845,38 +850,56 @@ module Takarik::Data
     def update_all(attributes : Hash(String, DB::Any))
       return 0 if attributes.empty?
 
-      set_clause = attributes.keys.map { |key| key + " = ?" }.join(", ")
-      update_params = attributes.values.to_a + combined_params
+      # If there's a LIMIT or OFFSET, we need to use a subquery approach
+      if @limit_value || @offset_value
+        # Get the IDs of records that match the limited query
+        primary_key = @model_class.primary_key
+        ids = pluck(primary_key)
+        return 0 if ids.empty?
 
-      sql = "UPDATE #{@model_class.table_name} SET #{set_clause}"
-      unless @where_conditions.empty?
-        # Check if there are any OR conditions and multiple conditions
-        has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
-        has_multiple_conditions = @where_conditions.size > 1
+        # Update only those specific records
+        set_clause = attributes.keys.map { |key| key + " = ?" }.join(", ")
+        placeholders = ids.map { "?" }.join(", ")
+        update_params = attributes.values.to_a + ids
 
-        # Only wrap in parentheses if we have OR conditions or multiple conditions
-        where_clause = @where_conditions.map_with_index do |condition, index|
-          if index == 0
-            if has_or_conditions || has_multiple_conditions
-              "(#{condition})"
+        sql = "UPDATE #{@model_class.table_name} SET #{set_clause} WHERE #{primary_key} IN (#{placeholders})"
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, update_params, @model_class.name, "Update")
+        result.rows_affected
+      else
+        # Normal update without LIMIT/OFFSET
+        set_clause = attributes.keys.map { |key| key + " = ?" }.join(", ")
+        update_params = attributes.values.to_a + combined_params
+
+        sql = "UPDATE #{@model_class.table_name} SET #{set_clause}"
+        unless @where_conditions.empty?
+          # Check if there are any OR conditions and multiple conditions
+          has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
+          has_multiple_conditions = @where_conditions.size > 1
+
+          # Only wrap in parentheses if we have OR conditions or multiple conditions
+          where_clause = @where_conditions.map_with_index do |condition, index|
+            if index == 0
+              if has_or_conditions || has_multiple_conditions
+                "(#{condition})"
+              else
+                condition
+              end
+            elsif condition.starts_with?("OR ")
+              " " + condition
             else
-              condition
+              if has_or_conditions || has_multiple_conditions
+                " AND (#{condition})"
+              else
+                " AND " + condition
+              end
             end
-          elsif condition.starts_with?("OR ")
-            " " + condition
-          else
-            if has_or_conditions || has_multiple_conditions
-              " AND (#{condition})"
-            else
-              " AND " + condition
-            end
-          end
-        end.join("")
-        sql += " WHERE #{where_clause}"
+          end.join("")
+          sql += " WHERE #{where_clause}"
+        end
+
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, update_params, @model_class.name, "Update")
+        result.rows_affected
       end
-
-      result = Takarik::Data.exec_with_logging(@model_class.connection, sql, update_params, @model_class.name, "Update")
-      result.rows_affected
     end
 
     def update_all(**attributes)
@@ -884,35 +907,50 @@ module Takarik::Data
     end
 
     def delete_all
-      sql = "DELETE FROM #{@model_class.table_name}"
-      unless @where_conditions.empty?
-        # Check if there are any OR conditions and multiple conditions
-        has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
-        has_multiple_conditions = @where_conditions.size > 1
+      # If there's a LIMIT or OFFSET, we need to use a subquery approach
+      if @limit_value || @offset_value
+        # Get the IDs of records that match the limited query
+        primary_key = @model_class.primary_key
+        ids = pluck(primary_key)
+        return 0 if ids.empty?
 
-        # Only wrap in parentheses if we have OR conditions or multiple conditions
-        where_clause = @where_conditions.map_with_index do |condition, index|
-          if index == 0
-            if has_or_conditions || has_multiple_conditions
-              "(#{condition})"
+        # Delete only those specific records
+        placeholders = ids.map { "?" }.join(", ")
+        sql = "DELETE FROM #{@model_class.table_name} WHERE #{primary_key} IN (#{placeholders})"
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, ids, @model_class.name, "Destroy")
+        result.rows_affected
+      else
+        # Normal delete without LIMIT/OFFSET
+        sql = "DELETE FROM #{@model_class.table_name}"
+        unless @where_conditions.empty?
+          # Check if there are any OR conditions and multiple conditions
+          has_or_conditions = @where_conditions.any? { |condition| condition.starts_with?("OR ") }
+          has_multiple_conditions = @where_conditions.size > 1
+
+          # Only wrap in parentheses if we have OR conditions or multiple conditions
+          where_clause = @where_conditions.map_with_index do |condition, index|
+            if index == 0
+              if has_or_conditions || has_multiple_conditions
+                "(#{condition})"
+              else
+                condition
+              end
+            elsif condition.starts_with?("OR ")
+              " " + condition
             else
-              condition
+              if has_or_conditions || has_multiple_conditions
+                " AND (#{condition})"
+              else
+                " AND " + condition
+              end
             end
-          elsif condition.starts_with?("OR ")
-            " " + condition
-          else
-            if has_or_conditions || has_multiple_conditions
-              " AND (#{condition})"
-            else
-              " AND " + condition
-            end
-          end
-        end.join("")
-        sql += " WHERE #{where_clause}"
+          end.join("")
+          sql += " WHERE #{where_clause}"
+        end
+
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, combined_params, @model_class.name, "Destroy")
+        result.rows_affected
       end
-
-      result = Takarik::Data.exec_with_logging(@model_class.connection, sql, combined_params, @model_class.name, "Destroy")
-      result.rows_affected
     end
 
     def destroy_all
@@ -921,72 +959,205 @@ module Takarik::Data
       records.size
     end
 
-    # Memory-efficient method to iterate over records in batches
-    def find_each(batch_size : Int32 = 1000, &block : T ->)
-      raise ArgumentError.new("Batch size must be positive") if batch_size <= 0
+    # Retrieve records in batches and yield each one to the block.
+    # This is efficient for processing large datasets without loading everything into memory.
+    # Uses cursor-based batching for better performance than OFFSET-based batching.
+    #
+    # Examples:
+    #   User.where(active: true).find_each do |user|
+    #     process_user(user)
+    #   end
+    #
+    #   User.find_each(start: 2000, batch_size: 5000) do |user|
+    #     UserMailer.newsletter(user).deliver_now
+    #   end
+    #
+    #   # Composite key ordering
+    #   Order.find_each(order: [:asc, :desc]) do |order|
+    #     process_order(order)
+    #   end
+    #
+    # Options:
+    #   :start - Starting cursor value (inclusive)
+    #   :finish - Ending cursor value (inclusive)
+    #   :batch_size - Number of records per batch (default: 1000)
+    #   :error_on_ignore - Raise error if existing order is present (default: nil)
+    #   :cursor - Column(s) to use for batching (default: primary_key)
+    #   :order - Cursor order (:asc/:desc or array like [:asc, :desc], default: :asc)
+    def find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                  error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                  order : Symbol | Array(Symbol) = :asc, &block : T ->)
+      raise Exception.new("Batch size must be positive") if batch_size <= 0
 
-      offset_value = 0
+      # Check for existing ordering
+      unless @order_clauses.empty?
+        if error_on_ignore
+          raise ArgumentError.new("Cannot use find_each with existing order. Use unscoped to remove ordering.")
+        else
+          # In Rails, this would log a warning. For now, we'll just ignore the order.
+        end
+      end
+
+      # Determine cursor columns
+      cursor_columns = if cursor
+                         cursor.is_a?(Array) ? cursor : [cursor.as(String)]
+                       else
+                         # Use primary key
+                         primary_key = @model_class.primary_key
+                         if primary_key.includes?(",")
+                           primary_key.split(",").map(&.strip)
+                         else
+                           [primary_key]
+                         end
+                       end
+
+      # Validate and normalize order parameter
+      order_array = case order
+                    when Symbol
+                      # Single order applies to all cursor columns
+                      cursor_columns.map { order.as(Symbol) }
+                    when Array
+                      if order.size != cursor_columns.size
+                        raise ArgumentError.new("Order array size (#{order.size}) must match cursor columns size (#{cursor_columns.size})")
+                      end
+                      order.as(Array(Symbol))
+                    else
+                      raise ArgumentError.new("Order must be Symbol or Array(Symbol), got #{order.class}")
+                    end
+
+      # Validate each order direction
+      order_array.each do |dir|
+        unless [:asc, :desc].includes?(dir)
+          raise ArgumentError.new("Order must be :asc or :desc, got #{dir}")
+        end
+      end
+
+      # For simplicity in this implementation, use the first cursor column for batching
+      batch_key = cursor_columns.first
+      batch_order = order_array.first
+
+      # Use regular dup (this preserves WHERE conditions but allows us to add our own ordering)
+      base_query = dup
+
+      # Apply start/finish filters to base query
+      if start
+        if batch_order == :asc
+          base_query = base_query.where("#{batch_key} >=", start)
+        else
+          base_query = base_query.where("#{batch_key} <=", start)
+        end
+      end
+
+      if finish
+        if batch_order == :asc
+          base_query = base_query.where("#{batch_key} <=", finish)
+        else
+          base_query = base_query.where("#{batch_key} >=", finish)
+        end
+      end
+
+      # Set up ordering for batching using cursor columns and their orders
+      cursor_columns.each_with_index do |col, i|
+        base_query = base_query.order(col, order_array[i].to_s.upcase)
+      end
+
+      # Start batching
+      last_id = start
 
       loop do
-        # Store original limit and offset
-        original_limit = @limit_value
-        original_offset = @offset_value
+        # Build query for this batch
+        current_query = base_query.dup
 
-        # Set batch limit and offset
-        @limit_value = batch_size
-        @offset_value = offset_value
+        # Add condition to get next batch
+        if last_id && last_id != start
+          if batch_order == :asc
+            current_query = current_query.where("#{batch_key} >", last_id)
+          else
+            current_query = current_query.where("#{batch_key} <", last_id)
+          end
+        end
 
-        batch_records = to_a
+        # Get batch of records
+        batch = current_query.limit(batch_size).to_a
 
-        # Restore original limit and offset
-        @limit_value = original_limit
-        @offset_value = original_offset
+        # Break if no more records
+        break if batch.empty?
 
-        break if batch_records.empty?
+        # Yield each record to the block
+        batch.each do |record|
+          yield record
+        end
 
-        batch_records.each(&block)
-
-        # Break if we got fewer records than the batch size (last batch)
-        break if batch_records.size < batch_size
-
-        offset_value += batch_size
+        # Update last_id for next batch
+        # Break if we got fewer records than batch_size (last batch)
+        if batch.size < batch_size
+          break
+        else
+          last_id = batch.last.get_attribute(batch_key)
+        end
       end
 
       self
     end
 
-    # Memory-efficient method to iterate over records in batches, yielding batches
-    def find_in_batches(batch_size : Int32 = 1000, &block : Array(T) ->)
-      raise ArgumentError.new("Batch size must be positive") if batch_size <= 0
+    # Returns an Enumerator when no block is given
+    def find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                  error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                  order : Symbol | Array(Symbol) = :asc)
+      records = [] of T
+      find_each(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |record|
+        records << record
+      end
+      records.each
+    end
 
-      offset_value = 0
+    # Yields each batch of records as an array. Uses cursor-based batching for better performance.
+    #
+    # Examples:
+    #   User.find_in_batches do |batch|
+    #     batch.each { |user| process_user(user) }
+    #   end
+    #
+    #   User.find_in_batches(start: 1000, batch_size: 500) do |batch|
+    #     batch.each { |user| user.update_status }
+    #   end
+    #
+    # Options: Same as find_each - start, finish, batch_size, error_on_ignore, cursor, order
+    def find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                        order : Symbol | Array(Symbol) = :asc, &block : Array(T) ->)
+      raise Exception.new("Batch size must be positive") if batch_size <= 0
 
-      loop do
-        # Store original limit and offset
-        original_limit = @limit_value
-        original_offset = @offset_value
+      # Use the same logic as find_each but collect records into batches
+      current_batch = [] of T
 
-        # Set batch limit and offset
-        @limit_value = batch_size
-        @offset_value = offset_value
+      find_each(start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |record|
+        current_batch << record
+        if current_batch.size >= batch_size
+          yield current_batch
+          current_batch.clear
+        end
+      end
 
-        batch_records = to_a
-
-        # Restore original limit and offset
-        @limit_value = original_limit
-        @offset_value = original_offset
-
-        break if batch_records.empty?
-
-        yield batch_records
-
-        # Break if we got fewer records than the batch size (last batch)
-        break if batch_records.size < batch_size
-
-        offset_value += batch_size
+      # Yield any remaining records in the final batch
+      unless current_batch.empty?
+        yield current_batch
       end
 
       self
+    end
+
+    # Returns an Enumerator when no block is given
+    def find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
+                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
+                        order : Symbol | Array(Symbol) = :asc)
+      batches = [] of Array(T)
+      find_in_batches(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |batch|
+        batches << batch
+      end
+      batches.each
     end
 
     # ========================================
