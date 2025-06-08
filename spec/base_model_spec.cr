@@ -39,7 +39,7 @@ describe Takarik::Data::BaseModel do
     end
 
     it "raises exception when record not found with find!" do
-      expect_raises(Exception, "Record not found") do
+      expect_raises(Takarik::Data::RecordNotFound) do
         User.find!(999)
       end
     end
@@ -193,8 +193,8 @@ describe Takarik::Data::BaseModel do
 
     it "prevents saving invalid records" do
       user = User.new
-      user.name = "A"  # Too short
-      user.email = "invalid"  # Invalid format
+      user.name = "A"        # Too short
+      user.email = "invalid" # Invalid format
 
       user.save.should be_false
       user.persisted?.should be_false
@@ -202,8 +202,8 @@ describe Takarik::Data::BaseModel do
 
     it "raises exception when saving invalid records with save!" do
       user = User.new
-      user.name = "A"  # Too short
-      user.email = "invalid"  # Invalid format
+      user.name = "A"        # Too short
+      user.email = "invalid" # Invalid format
 
       expect_raises(Takarik::Data::Validations::ValidationError) do
         user.save!
@@ -280,7 +280,7 @@ describe Takarik::Data::BaseModel do
       user.age = 30
 
       user.save
-      user.email.should eq("john@example.com")  # Should be lowercased by callback
+      user.email.should eq("john@example.com") # Should be lowercased by callback
     end
   end
 
@@ -299,7 +299,7 @@ describe Takarik::Data::BaseModel do
       user = User.create(name: "John", email: "john@example.com", age: 30)
       original_updated_at = user.updated_at
 
-      sleep(1.millisecond)  # Ensure time difference
+      sleep(1.millisecond) # Ensure time difference
       user.name = "Johnny"
       user.save
 

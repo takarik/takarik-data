@@ -18,6 +18,13 @@ module Takarik::Data
     @@connection = DB.open(database_url)
   end
 
+  # Exception raised when a record is not found
+  class RecordNotFound < Exception
+    def initialize(message : String = "Record not found")
+      super(message)
+    end
+  end
+
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
   abstract class BaseModel
@@ -304,12 +311,73 @@ module Takarik::Data
     # CLASS METHODS - FINDERS
     # ========================================
 
-    def self.find(id)
+    # Find record by primary key. Returns the record or nil if not found.
+    #
+    # Examples:
+    #   Customer.find(10)  # => Customer or nil
+    #
+    # SQL: SELECT * FROM customers WHERE (customers.id = 10) LIMIT 1
+    def self.find(id : DB::Any)
       all.where(primary_key, id).first
     end
 
-    def self.find!(id)
-      find(id) || raise "Record not found with #{primary_key}=#{id}"
+    # Find multiple records by array of primary keys. Returns array of records.
+    # Raises RecordNotFound if any ID is missing.
+    #
+    # Examples:
+    #   Customer.find([1, 10])  # => Array of Customer records
+    #
+    # SQL: SELECT * FROM customers WHERE (customers.id IN (1,10))
+    def self.find(ids : Array)
+      return [] of self if ids.empty?
+
+      results = all.where(primary_key, ids).to_a
+
+      # Check if all IDs were found
+      if results.size != ids.size
+        found_ids = results.map { |r| r.get_attribute(primary_key) }
+        missing_ids = ids - found_ids
+        raise RecordNotFound.new("Couldn't find all #{name.split("::").last} with '#{primary_key}' in #{ids.inspect} (found #{found_ids.size} results, but was looking for #{ids.size}). Missing IDs: #{missing_ids.inspect}")
+      end
+
+      results
+    end
+
+    # Find multiple records by splat arguments. Returns array of records.
+    # Equivalent to find([id1, id2, ...])
+    #
+    # Examples:
+    #   Customer.find(1, 10)  # Same as Customer.find([1, 10])
+    def self.find(*ids)
+      find(ids.to_a)
+    end
+
+    # Find record by primary key. Raises RecordNotFound exception if not found.
+    #
+    # Examples:
+    #   Customer.find!(10)  # => Customer or raises RecordNotFound
+    def self.find!(id : DB::Any)
+      find(id) || raise RecordNotFound.new("Couldn't find #{name.split("::").last} with '#{primary_key}'=#{id}")
+    end
+
+    # Find multiple records by array of primary keys. Raises RecordNotFound if not found.
+    #
+    # Examples:
+    #   Customer.find!([1, 10])  # => Array of Customer records or raises RecordNotFound
+    def self.find!(ids : Array)
+      results = find(ids)
+      if results.empty? && !ids.empty?
+        raise RecordNotFound.new("Couldn't find #{name.split("::").last} with '#{primary_key}' in #{ids.inspect}")
+      end
+      results
+    end
+
+    # Find multiple records by splat arguments. Raises RecordNotFound if not found.
+    #
+    # Examples:
+    #   Customer.find!(1, 10)  # Same as Customer.find!([1, 10])
+    def self.find!(*ids)
+      find!(ids.to_a)
     end
 
     def self.first
@@ -1269,12 +1337,89 @@ module Takarik::Data
       end
     end
 
-    macro primary_key(name, type = Int64)
-      # Override the default primary key
-      @@primary_key_name = {{name.id.stringify}}
+    macro primary_key(name_or_keys, type = Int64)
+      {% if name_or_keys.is_a?(ArrayLiteral) %}
+        # Handle composite primary key: primary_key [:shop_id, :id]
+        {% keys_array = name_or_keys.map(&.id.stringify) %}
+        @@primary_key_name = {{keys_array.join(",")}}
 
-      # Define the property for the primary key
-      define_property_with_accessors({{name}}, {{type}})
+        # Define properties for each key
+        {% for key in name_or_keys %}
+          define_property_with_accessors({{key}}, {{type}})
+        {% end %}
+
+        # Override find methods for composite key support
+        def self.find(composite_key : Array)
+          return nil if composite_key.empty?
+
+          # Handle single composite key [store_id, id]
+          primary_keys = @@primary_key_name.split(",").map(&.strip)
+
+          if composite_key.size != primary_keys.size
+            raise ArgumentError.new("Wrong number of primary key values (given #{composite_key.size}, expected #{primary_keys.size})")
+          end
+
+          conditions = Hash(String, DB::Any).new
+          primary_keys.each_with_index do |key, index|
+            conditions[key] = composite_key[index].as(DB::Any)
+          end
+
+          all.where(conditions).first
+        end
+
+        def self.find(composite_keys : Array(Array))
+          return [] of self if composite_keys.empty?
+
+          # Handle multiple composite keys [[1, 8], [7, 15]]
+          primary_keys = @@primary_key_name.split(",").map(&.strip)
+          query_builder = unscoped
+
+          composite_keys.each_with_index do |composite_key, index|
+            if composite_key.size != primary_keys.size
+              raise ArgumentError.new("Wrong number of primary key values in composite key #{index} (given #{composite_key.size}, expected #{primary_keys.size})")
+            end
+
+            conditions = Hash(String, DB::Any).new
+            primary_keys.each_with_index do |key, key_index|
+              conditions[key] = composite_key[key_index].as(DB::Any)
+            end
+
+            if index == 0
+              query_builder = query_builder.where(conditions)
+            else
+              query_builder = query_builder.or(conditions)
+            end
+          end
+
+          results = query_builder.to_a
+
+          # Check if all composite keys were found
+          if results.size != composite_keys.size
+            raise RecordNotFound.new("Couldn't find all #{name.split("::").last} with composite keys #{composite_keys.inspect} (found #{results.size} results, but was looking for #{composite_keys.size})")
+          end
+
+          results
+        end
+
+        # Find with exception for composite keys
+        def self.find!(composite_key : Array)
+          find(composite_key) || raise RecordNotFound.new("Couldn't find #{name.split("::").last} with composite key #{composite_key.inspect}")
+        end
+
+        def self.find!(composite_keys : Array(Array))
+          results = find(composite_keys)
+          if results.empty? && !composite_keys.empty?
+            raise RecordNotFound.new("Couldn't find #{name.split("::").last} with composite keys #{composite_keys.inspect}")
+          end
+          results
+        end
+      {% else %}
+        # Handle single primary key: primary_key :id or primary_key "custom_id"
+        @@primary_key_name = {{name_or_keys.id.stringify}}
+
+        # Define the property for the primary key
+        define_property_with_accessors({{name_or_keys}}, {{type}})
+      {% end %}
     end
 
     macro column(name, type, **options)
