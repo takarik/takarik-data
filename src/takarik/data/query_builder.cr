@@ -19,7 +19,7 @@ module Takarik::Data
     @joins = [] of String
     @order_clauses = [] of String
     @group_clause : String?
-    @having_clause : String?
+    @having_conditions = [] of String
     @having_params = [] of DB::Any
     @limit_value : Int32?
     @offset_value : Int32?
@@ -644,23 +644,28 @@ module Takarik::Data
     # HAVING METHODS
     # ========================================
 
+    def having(condition : String)
+      @having_conditions << condition
+      self
+    end
+
     def having(condition : String, *params : DB::Any)
-      @having_clause = condition
+      @having_conditions << condition
       @having_params.concat(params.to_a)
       self
     end
 
     def having(column : String, value : DB::Any)
       if column.includes?("?")
-        @having_clause = column
+        @having_conditions << column
         @having_params << value
         return self
       end
 
       if value.nil?
-        @having_clause = "#{column} IS NULL"
+        @having_conditions << "#{column} IS NULL"
       else
-        @having_clause = "#{column} = ?"
+        @having_conditions << "#{column} = ?"
         @having_params << value
       end
       self
@@ -758,8 +763,8 @@ module Takarik::Data
       end
 
       # HAVING clause
-      if @having_clause
-        sql_parts << "HAVING #{@having_clause}"
+      unless @having_conditions.empty?
+        sql_parts << "HAVING #{@having_conditions.join(" AND ")}"
       end
 
       # ORDER BY clause
@@ -1928,7 +1933,7 @@ module Takarik::Data
 
       # Merge other query state
       @group_clause = other_query.@group_clause if other_query.@group_clause
-      @having_clause = other_query.@having_clause if other_query.@having_clause
+      @having_conditions.concat(other_query.@having_conditions)
       @having_params.concat(other_query.@having_params)
       @limit_value = other_query.@limit_value if other_query.@limit_value
       @offset_value = other_query.@offset_value if other_query.@offset_value

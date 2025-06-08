@@ -331,6 +331,10 @@ module Takarik::Data
       query.group(columns)
     end
 
+    def self.having(condition : String)
+      query.having(condition)
+    end
+
     def self.having(condition : String, *params : DB::Any)
       query.having(condition, *params)
     end
