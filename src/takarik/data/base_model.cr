@@ -589,6 +589,36 @@ module Takarik::Data
       all.count
     end
 
+    # Find the first record matching the given conditions without any implicit ordering.
+    # Returns nil if no record is found.
+    #
+    # Examples:
+    #   Customer.find_by(first_name: "Lifo")  # => Customer or nil
+    #   Customer.find_by(first_name: "Lifo", last_name: "Smith")  # => Customer or nil
+    #
+    # SQL: SELECT * FROM customers WHERE (customers.first_name = 'Lifo') LIMIT 1
+    def self.find_by(conditions : Hash(String, DB::Any))
+      where(conditions).take
+    end
+
+    def self.find_by(**conditions)
+      where(**conditions).take
+    end
+
+    # Find the first record matching the given conditions without any implicit ordering.
+    # Raises RecordNotFound if no record is found.
+    #
+    # Examples:
+    #   Customer.find_by!(first_name: "Lifo")  # => Customer or raises RecordNotFound
+    #   Customer.find_by!(first_name: "NonExistent")  # => raises RecordNotFound
+    def self.find_by!(conditions : Hash(String, DB::Any))
+      where(conditions).take!
+    end
+
+    def self.find_by!(**conditions)
+      where(**conditions).take!
+    end
+
     # ========================================
     # CLASS METHODS - CREATION
     # ========================================

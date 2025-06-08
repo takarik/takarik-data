@@ -531,7 +531,7 @@ describe Takarik::Data::QueryBuilder do
     end
 
     it "raises exception when no record found with first!" do
-      expect_raises(Exception, "No records found") do
+      expect_raises(Takarik::Data::RecordNotFound, "Couldn't find User") do
         User.where(name: "NonExistent").first!
       end
     end

@@ -636,6 +636,330 @@ describe "Find Methods" do
     end
   end
 
+    describe "find_by methods" do
+    it "finds a record by single condition" do
+      user = User.new
+      user.name = "Lifo"
+      user.email = "lifo@example.com"
+      user.age = 30
+      user.save
+
+      found_user = User.find_by(name: "Lifo")
+      found_user.should_not be_nil
+      found_user.not_nil!.id.should eq(user.id)
+      found_user.not_nil!.name.should eq("Lifo")
+    end
+
+    it "finds a record by multiple conditions" do
+      user1 = User.new
+      user1.name = "John"
+      user1.email = "john@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "John"
+      user2.email = "john.doe@example.com"
+      user2.age = 30
+      user2.save
+
+      # Should find user1 based on both name and email
+      found_user = User.find_by(name: "John", email: "john@example.com")
+      found_user.should_not be_nil
+      found_user.not_nil!.id.should eq(user1.id)
+      found_user.not_nil!.email.should eq("john@example.com")
+    end
+
+    it "returns nil when no record matches conditions" do
+      user = User.find_by(name: "NonExistent")
+      user.should be_nil
+    end
+
+    it "returns first matching record without implicit ordering" do
+      user1 = User.new
+      user1.name = "Same Name"
+      user1.email = "first@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Same Name"
+      user2.email = "second@example.com"
+      user2.age = 30
+      user2.save
+
+      # Should return one of the users (implementation dependent without ORDER BY)
+      found_user = User.find_by(name: "Same Name")
+      found_user.should_not be_nil
+      found_user.not_nil!.name.should eq("Same Name")
+      # Could be either user1 or user2, so just check it's one of them
+      [user1.id, user2.id].should contain(found_user.not_nil!.id)
+    end
+
+    it "works with Hash(String, DB::Any) syntax" do
+      user = User.new
+      user.name = "Hash User"
+      user.email = "hash@example.com"
+      user.age = 35
+      user.save
+
+      conditions = Hash(String, DB::Any).new
+      conditions["name"] = "Hash User".as(DB::Any)
+      conditions["age"] = 35.as(DB::Any)
+
+      found_user = User.find_by(conditions)
+      found_user.should_not be_nil
+      found_user.not_nil!.id.should eq(user.id)
+    end
+
+    it "works with named arguments syntax" do
+      user = User.new
+      user.name = "Named Args User"
+      user.email = "named@example.com"
+      user.age = 40
+      user.save
+
+      found_user = User.find_by(name: "Named Args User", age: 40)
+      found_user.should_not be_nil
+      found_user.not_nil!.id.should eq(user.id)
+    end
+  end
+
+  describe "find_by! methods (with exceptions)" do
+    it "finds a record and returns it successfully" do
+      user = User.new
+      user.name = "Exception Test"
+      user.email = "exception@example.com"
+      user.age = 45
+      user.save
+
+      found_user = User.find_by!(name: "Exception Test")
+      found_user.should_not be_nil
+      found_user.id.should eq(user.id)
+    end
+
+    it "raises RecordNotFound when no record matches" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.find_by!(name: "Does Not Exist")
+      end
+    end
+
+    it "raises RecordNotFound with meaningful message" do
+      begin
+        User.find_by!(name: "Missing User")
+        fail "Expected RecordNotFound to be raised"
+      rescue ex : Takarik::Data::RecordNotFound
+        ex.message.not_nil!.should contain("User")
+      end
+    end
+
+    it "works with Hash(String, DB::Any) syntax and raises on miss" do
+      conditions = Hash(String, DB::Any).new
+      conditions["name"] = "Missing Hash User".as(DB::Any)
+
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.find_by!(conditions)
+      end
+    end
+
+    it "works with named arguments syntax and raises on miss" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.find_by!(name: "Missing Named User", age: 999)
+      end
+    end
+  end
+
+    describe "QueryBuilder exception consistency" do
+    it "throws RecordNotFound for first! on empty QueryBuilder result" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").first!
+      end
+    end
+
+    it "throws RecordNotFound for last! on empty QueryBuilder result" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").last!
+      end
+    end
+
+    it "throws RecordNotFound for take! on empty QueryBuilder result" do
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").take!
+      end
+    end
+
+    it "QueryBuilder exceptions have proper model names" do
+      begin
+        User.where(name: "Missing").first!
+        fail "Expected RecordNotFound to be raised"
+      rescue ex : Takarik::Data::RecordNotFound
+        ex.message.not_nil!.should contain("User")
+      end
+    end
+
+    it "QueryBuilder last! works correctly" do
+      user = User.new
+      user.name = "Last Test"
+      user.email = "last@example.com"
+      user.age = 25
+      user.save
+
+      found_user = User.where(name: "Last Test").last!
+      found_user.should_not be_nil
+      found_user.id.should eq(user.id)
+    end
+
+    it "QueryBuilder first! works correctly" do
+      user = User.new
+      user.name = "First Test"
+      user.email = "first@example.com"
+      user.age = 30
+      user.save
+
+      found_user = User.where(name: "First Test").first!
+      found_user.should_not be_nil
+      found_user.id.should eq(user.id)
+    end
+  end
+
+  describe "QueryBuilder multiple record methods" do
+    it "first(n) returns multiple records with query ordering" do
+      user1 = User.new
+      user1.name = "Alpha"
+      user1.email = "alpha@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Beta"
+      user2.email = "beta@example.com"
+      user2.age = 30
+      user2.save
+
+      user3 = User.new
+      user3.name = "Gamma"
+      user3.email = "gamma@example.com"
+      user3.age = 35
+      user3.save
+
+      # Get first 2 users ordered by name
+      users = User.order(:name).first(2)
+      users.size.should eq(2)
+      users[0].name.should eq("Alpha")
+      users[1].name.should eq("Beta")
+    end
+
+    it "first!(n) returns multiple records or raises RecordNotFound" do
+      user = User.new
+      user.name = "Only User"
+      user.email = "only@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed with one result when requesting 2
+      users = User.where(name: "Only User").first!(2)
+      users.size.should eq(1)
+      users[0].name.should eq("Only User")
+
+      # Should raise when no results
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").first!(2)
+      end
+    end
+
+    it "take(n) returns multiple records without ordering" do
+      user1 = User.new
+      user1.name = "Take User 1"
+      user1.email = "take1@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Take User 2"
+      user2.email = "take2@example.com"
+      user2.age = 30
+      user2.save
+
+      # Should return up to 2 records without implicit ordering
+      users = User.where("name LIKE", "Take User%").take(2)
+      users.size.should eq(2)
+      # Order is not guaranteed, so just check we got both users
+      names = users.map(&.name)
+      names.should contain("Take User 1")
+      names.should contain("Take User 2")
+    end
+
+    it "take!(n) returns multiple records or raises RecordNotFound" do
+      user = User.new
+      user.name = "Take Only User"
+      user.email = "takeonly@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed with one result when requesting 3
+      users = User.where(name: "Take Only User").take!(3)
+      users.size.should eq(1)
+      users[0].name.should eq("Take Only User")
+
+      # Should raise when no results
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").take!(3)
+      end
+    end
+
+    it "last(n) returns multiple records in reverse order" do
+      user1 = User.new
+      user1.name = "Last Alpha"
+      user1.email = "lastalpha@example.com"
+      user1.age = 25
+      user1.save
+
+      user2 = User.new
+      user2.name = "Last Beta"
+      user2.email = "lastbeta@example.com"
+      user2.age = 30
+      user2.save
+
+      user3 = User.new
+      user3.name = "Last Gamma"
+      user3.email = "lastgamma@example.com"
+      user3.age = 35
+      user3.save
+
+      # Get last 2 users ordered by name (should be reverse alphabetical)
+      users = User.where("name LIKE", "Last%").order(:name).last(2)
+      users.size.should eq(2)
+      # Should return in reverse order: Gamma, Beta (alphabetically last first)
+      users[0].name.should eq("Last Gamma")
+      users[1].name.should eq("Last Beta")
+    end
+
+    it "last!(n) returns multiple records or raises RecordNotFound" do
+      user = User.new
+      user.name = "Last Only User"
+      user.email = "lastonly@example.com"
+      user.age = 25
+      user.save
+
+      # Should succeed with one result when requesting 2
+      users = User.where(name: "Last Only User").last!(2)
+      users.size.should eq(1)
+      users[0].name.should eq("Last Only User")
+
+      # Should raise when no results
+      expect_raises(Takarik::Data::RecordNotFound) do
+        User.where(name: "NonExistent").last!(2)
+      end
+    end
+
+    it "returns empty arrays for multiple record methods when appropriate" do
+      # These should return empty arrays, not raise exceptions
+      User.where(name: "NonExistent").first(3).should be_empty
+      User.where(name: "NonExistent").take(3).should be_empty
+      User.where(name: "NonExistent").last(3).should be_empty
+    end
+  end
+
   describe "Edge cases" do
     it "handles empty arrays correctly" do
       users = User.find([] of Int32)

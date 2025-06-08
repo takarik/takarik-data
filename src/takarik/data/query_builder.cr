@@ -685,7 +685,47 @@ module Takarik::Data
     end
 
     def first!
-      first || raise "No records found"
+      first || raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+    end
+
+    # Find up to the specified number of records with ordering preserved from query.
+    def first(limit_count : Int32)
+      limit(limit_count).to_a
+    end
+
+    # Find up to the specified number of records with ordering. Raises RecordNotFound if no records found.
+    def first!(limit_count : Int32)
+      results = first(limit_count)
+      if results.empty?
+        raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+      end
+      results
+    end
+
+    # Retrieve a record without any implicit ordering. Returns nil if no record found.
+    def take
+      limit(1)
+      results = to_a
+      results.first?
+    end
+
+    # Retrieve up to the specified number of records without any implicit ordering.
+    def take(limit_count : Int32)
+      limit(limit_count).to_a
+    end
+
+    # Retrieve a record without any implicit ordering. Raises RecordNotFound if no record found.
+    def take!
+      take || raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+    end
+
+    # Retrieve up to the specified number of records without any implicit ordering. Raises RecordNotFound if no records found.
+    def take!(limit_count : Int32)
+      results = take(limit_count)
+      if results.empty?
+        raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+      end
+      results
     end
 
     def last
@@ -707,6 +747,25 @@ module Takarik::Data
       limit(1)
       results = to_a
       results.first?
+    end
+
+    def last!
+      last || raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+    end
+
+    # Find up to the specified number of records in reverse order.
+    def last(limit_count : Int32)
+      # Use reverse_order to flip any existing ordering, then apply limit
+      reverse_order.limit(limit_count).to_a
+    end
+
+    # Find up to the specified number of records in reverse order. Raises RecordNotFound if no records found.
+    def last!(limit_count : Int32)
+      results = last(limit_count)
+      if results.empty?
+        raise Takarik::Data::RecordNotFound.new("Couldn't find #{@model_class.model_name}")
+      end
+      results
     end
 
     def count
@@ -1458,7 +1517,7 @@ module Takarik::Data
            sort sort_by min max min_by max_by
            join partition group_by
            zip flatten compact uniq
-           take drop take_while drop_while
+           drop take_while drop_while
            [] []? at at? fetch
          ] %}
 
