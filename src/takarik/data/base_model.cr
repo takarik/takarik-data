@@ -331,6 +331,83 @@ module Takarik::Data
       query.group(columns)
     end
 
+    # Overriding condition methods
+    def self.unscope(*clauses : Symbol)
+      query.unscope(*clauses)
+    end
+
+    def self.unscope(*, where clause_name : Symbol)
+      query.unscope(where: clause_name)
+    end
+
+    def self.only(*clauses : Symbol)
+      query.only(*clauses)
+    end
+
+    def self.reselect(*columns : String)
+      query.reselect(*columns)
+    end
+
+    def self.reselect(*columns : Symbol)
+      query.reselect(*columns)
+    end
+
+    def self.reselect(columns : Array(String))
+      query.reselect(columns)
+    end
+
+    def self.reselect(columns : Array(Symbol))
+      query.reselect(columns)
+    end
+
+    def self.reorder(*columns : String)
+      query.reorder(*columns)
+    end
+
+    def self.reorder(*columns : Symbol)
+      query.reorder(*columns)
+    end
+
+    def self.reorder(column : String, direction : String = "ASC")
+      query.reorder(column, direction)
+    end
+
+    def self.reorder(**columns)
+      query.reorder(**columns)
+    end
+
+    def self.rewhere(conditions : Hash(String, DB::Any))
+      query.rewhere(conditions)
+    end
+
+    def self.rewhere(**conditions)
+      query.rewhere(**conditions)
+    end
+
+    def self.rewhere(condition : String, *params : DB::Any)
+      query.rewhere(condition, *params)
+    end
+
+    def self.regroup(*columns : String)
+      query.regroup(*columns)
+    end
+
+    def self.regroup(*columns : Symbol)
+      query.regroup(*columns)
+    end
+
+    def self.regroup(columns : Array(String))
+      query.regroup(columns)
+    end
+
+    def self.regroup(columns : Array(Symbol))
+      query.regroup(columns)
+    end
+
+    def self.reverse_order
+      query.reverse_order
+    end
+
     def self.having(condition : String)
       query.having(condition)
     end

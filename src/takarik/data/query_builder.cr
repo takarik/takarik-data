@@ -32,6 +32,25 @@ module Takarik::Data
     def initialize(@model_class : T.class)
     end
 
+    # Create a deep copy of the query builder
+    def dup
+      new_query = QueryBuilder(T).new(@model_class)
+      new_query.set_select(@select_clause)
+      new_query.set_where_conditions(@where_conditions.dup, @where_params.dup)
+      new_query.set_order_clauses(@order_clauses.dup)
+      new_query.set_limit(@limit_value)
+      new_query.set_offset(@offset_value)
+      new_query.set_distinct(@distinct)
+      new_query.set_joins(@joins.dup, @has_joins)
+      new_query.set_group(@group_clause)
+      new_query.set_having_conditions(@having_conditions.dup, @having_params.dup)
+      # Copy other arrays
+      new_query.copy_includes(@includes.dup)
+      new_query.copy_preloads(@preloads.dup)
+      new_query.copy_eager_loads(@eager_loads.dup)
+      new_query
+    end
+
     # ========================================
     # SELECT METHODS
     # ========================================
@@ -587,20 +606,27 @@ module Takarik::Data
     def reverse_order
       new_query = dup
 
-      reversed_order = @order_clauses.map do |clause|
-        if clause.ends_with?(" ASC")
-          clause.gsub(" ASC", " DESC")
-        elsif clause.ends_with?(" DESC")
-          clause.gsub(" DESC", " ASC")
-        else
-          # If no explicit direction, assume ASC and reverse to DESC
-          "#{clause} DESC"
+      if @order_clauses.empty?
+        # If no ordering clause is specified, order by primary key in reverse order
+        primary_key = @model_class.primary_key
+        new_query.@order_clauses << "#{@model_class.table_name}.#{primary_key} DESC"
+      else
+        reversed_order = @order_clauses.map do |clause|
+          if clause.ends_with?(" ASC")
+            clause.gsub(" ASC", " DESC")
+          elsif clause.ends_with?(" DESC")
+            clause.gsub(" DESC", " ASC")
+          else
+            # If no explicit direction, assume ASC and reverse to DESC
+            "#{clause} DESC"
+          end
         end
+
+        # Clear existing order and add reversed order
+        new_query.clear_order
+        reversed_order.each { |clause| new_query.add_order_clause(clause) }
       end
 
-      # Clear existing order and add reversed order
-      new_query.clear_order
-      reversed_order.each { |clause| new_query.add_order_clause(clause) }
       new_query
     end
 
@@ -614,6 +640,310 @@ module Takarik::Data
     def add_order_clause(clause : String)
       @order_clauses << clause
       self
+    end
+
+    # Helper methods for clearing various query parts
+    def clear_where
+      @where_conditions.clear
+      @where_params.clear
+      self
+    end
+
+    def clear_limit
+      @limit_value = nil
+      self
+    end
+
+    def clear_offset
+      @offset_value = nil
+      self
+    end
+
+    def clear_group
+      @group_clause = nil
+      self
+    end
+
+    def clear_having
+      @having_conditions.clear
+      @having_params.clear
+      self
+    end
+
+    def clear_select
+      @select_clause = nil
+      self
+    end
+
+    def clear_distinct
+      @distinct = false
+      self
+    end
+
+    def set_where_conditions(conditions : Array(String), params : Array(DB::Any))
+      @where_conditions = conditions
+      @where_params = params
+      self
+    end
+
+    def set_order_clauses(clauses : Array(String))
+      @order_clauses = clauses
+      self
+    end
+
+    def set_limit(value : Int32?)
+      @limit_value = value
+      self
+    end
+
+    def set_offset(value : Int32?)
+      @offset_value = value
+      self
+    end
+
+    def set_group(clause : String?)
+      @group_clause = clause
+      self
+    end
+
+    def set_having_conditions(conditions : Array(String), params : Array(DB::Any))
+      @having_conditions = conditions
+      @having_params = params
+      self
+    end
+
+    def set_select(clause : String?)
+      @select_clause = clause
+      self
+    end
+
+    def set_distinct(value : Bool)
+      @distinct = value
+      self
+    end
+
+    def set_joins(joins : Array(String), has_joins : Bool)
+      @joins = joins
+      @has_joins = has_joins
+      self
+    end
+
+    def copy_includes(includes : Array(String))
+      @includes = includes
+      self
+    end
+
+    def copy_preloads(preloads : Array(String))
+      @preloads = preloads
+      self
+    end
+
+    def copy_eager_loads(eager_loads : Array(String))
+      @eager_loads = eager_loads
+      self
+    end
+
+    # Getter methods for debugging
+    def order_clauses
+      @order_clauses
+    end
+
+    def where_conditions
+      @where_conditions
+    end
+
+    # ========================================
+    # OVERRIDING CONDITIONS METHODS
+    # ========================================
+
+                        # Remove specific conditions from query
+    def unscope(*clauses : Symbol)
+      new_query = dup
+
+      clauses.each do |clause|
+        case clause
+        when :where
+          new_query.clear_where
+        when :order
+          new_query.clear_order
+        when :limit
+          new_query.clear_limit
+        when :offset
+          new_query.clear_offset
+        when :group
+          new_query.clear_group
+        when :having
+          new_query.clear_having
+        when :select
+          new_query.clear_select
+        when :distinct
+          new_query.clear_distinct
+        end
+      end
+
+      new_query
+    end
+
+        # Remove specific where conditions
+    def unscope(*, where clause_name : Symbol)
+      new_query = dup
+      clause_str = clause_name.to_s
+
+      # Filter out conditions that contain the specified column
+      filtered_conditions = [] of String
+      filtered_params = [] of DB::Any
+
+      param_index = 0
+      @where_conditions.each_with_index do |condition, i|
+        if condition.includes?(clause_str)
+          # Skip this condition and its parameters
+          param_count = condition.count('?')
+          param_index += param_count
+        else
+          # Keep this condition and its parameters
+          filtered_conditions << condition
+          param_count = condition.count('?')
+          param_count.times do
+            if param_index < @where_params.size
+              filtered_params << @where_params[param_index]
+            end
+            param_index += 1
+          end
+        end
+      end
+
+      new_query.set_where_conditions(filtered_conditions, filtered_params)
+      new_query
+    end
+
+        # Keep only specified clauses
+    def only(*clauses : Symbol)
+      new_query = @model_class.all.as(QueryBuilder(T))
+
+      clauses.each do |clause|
+        case clause
+        when :where
+          new_query.set_where_conditions(@where_conditions.dup, @where_params.dup)
+        when :order
+          new_query.set_order_clauses(@order_clauses.dup)
+        when :limit
+          new_query.set_limit(@limit_value)
+        when :offset
+          new_query.set_offset(@offset_value)
+        when :group
+          new_query.set_group(@group_clause)
+        when :having
+          new_query.set_having_conditions(@having_conditions.dup, @having_params.dup)
+        when :select
+          new_query.set_select(@select_clause)
+        when :distinct
+          new_query.set_distinct(@distinct)
+        when :joins
+          new_query.set_joins(@joins.dup, @has_joins)
+        end
+      end
+
+      new_query
+    end
+
+    # Override existing select clause
+    def reselect(*columns : String)
+      new_query = dup
+      new_query.set_select(columns.join(", "))
+      new_query
+    end
+
+    def reselect(*columns : Symbol)
+      new_query = dup
+      new_query.set_select(columns.map(&.to_s).join(", "))
+      new_query
+    end
+
+    def reselect(columns : Array(String))
+      new_query = dup
+      new_query.set_select(columns.join(", "))
+      new_query
+    end
+
+    def reselect(columns : Array(Symbol))
+      new_query = dup
+      new_query.set_select(columns.map(&.to_s).join(", "))
+      new_query
+    end
+
+    # Override existing order clause
+    def reorder(*columns : String)
+      new_query = dup
+      new_query.clear_order
+      columns.each { |column| new_query.add_order_clause(column) }
+      new_query
+    end
+
+    def reorder(*columns : Symbol)
+      new_query = dup
+      new_query.clear_order
+      columns.each { |column| new_query.add_order_clause(column.to_s) }
+      new_query
+    end
+
+    def reorder(column : String, direction : String = "ASC")
+      new_query = dup
+      new_query.clear_order
+      new_query.add_order_clause("#{column} #{direction.upcase}")
+      new_query
+    end
+
+    def reorder(**columns)
+      new_query = dup
+      new_query.clear_order
+      columns.each do |column, direction|
+        new_query.add_order_clause("#{column} #{direction.to_s.upcase}")
+      end
+      new_query
+    end
+
+    # Replace existing where conditions
+    def rewhere(conditions : Hash(String, DB::Any))
+      new_query = dup
+      new_query.clear_where
+      new_query.where(conditions)
+    end
+
+    def rewhere(**conditions)
+      new_query = dup
+      new_query.clear_where
+      new_query.where(**conditions)
+    end
+
+    def rewhere(condition : String, *params : DB::Any)
+      new_query = dup
+      new_query.clear_where
+      new_query.where(condition, *params)
+    end
+
+    # Replace existing group clause
+    def regroup(*columns : String)
+      new_query = dup
+      new_query.set_group(columns.join(", "))
+      new_query
+    end
+
+    def regroup(*columns : Symbol)
+      new_query = dup
+      new_query.set_group(columns.map(&.to_s).join(", "))
+      new_query
+    end
+
+    def regroup(columns : Array(String))
+      new_query = dup
+      new_query.set_group(columns.join(", "))
+      new_query
+    end
+
+    def regroup(columns : Array(Symbol))
+      new_query = dup
+      new_query.set_group(columns.map(&.to_s).join(", "))
+      new_query
     end
 
     # ========================================
@@ -1895,10 +2225,18 @@ module Takarik::Data
            [] []? at at? fetch
          ] %}
 
+      {% query_builder_methods = %w[
+           unscope only reselect reorder rewhere regroup reverse_order
+         ] %}
+
       {% method_name = call.name.stringify %}
 
       {% if array_methods.includes?(method_name) %}
         to_a.{{call}}
+      {% elsif query_builder_methods.includes?(method_name) %}
+        # These methods should not be delegated - they should be handled by QueryBuilder itself
+        # If we reach here, it means the method is not properly defined
+        raise "Method '#{method_name}' not found on QueryBuilder instance"
       {% else %}
         # Try to delegate to model class scope
         {% if call.args.size > 0 %}
