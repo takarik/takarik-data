@@ -63,8 +63,18 @@ module Takarik::Data
       Takarik::Data.connection
     end
 
+    # Helper method to get the simple class name without namespaces
+    def self.model_name
+      self.name.split("::").last
+    end
+
+    # Helper method to extract model name from any class
+    def self.model_name_from(klass)
+      klass.name.split("::").last
+    end
+
     def self.table_name
-      @@table_name || self.name.split("::").last.tableize
+      @@table_name || model_name.tableize
     end
 
     def self.primary_key
@@ -337,7 +347,7 @@ module Takarik::Data
       if results.size != ids.size
         found_ids = results.map { |r| r.get_attribute(primary_key) }
         missing_ids = ids - found_ids
-        raise RecordNotFound.new("Couldn't find all #{name.split("::").last} with '#{primary_key}' in #{ids.inspect} (found #{found_ids.size} results, but was looking for #{ids.size}). Missing IDs: #{missing_ids.inspect}")
+        raise RecordNotFound.new("Couldn't find all #{model_name} with '#{primary_key}' in #{ids.inspect} (found #{found_ids.size} results, but was looking for #{ids.size}). Missing IDs: #{missing_ids.inspect}")
       end
 
       results
@@ -357,7 +367,7 @@ module Takarik::Data
     # Examples:
     #   Customer.find!(10)  # => Customer or raises RecordNotFound
     def self.find!(id : DB::Any)
-      find(id) || raise RecordNotFound.new("Couldn't find #{name.split("::").last} with '#{primary_key}'=#{id}")
+      find(id) || raise RecordNotFound.new("Couldn't find #{model_name} with '#{primary_key}'=#{id}")
     end
 
     # Find multiple records by array of primary keys. Raises RecordNotFound if not found.
@@ -367,7 +377,7 @@ module Takarik::Data
     def self.find!(ids : Array)
       results = find(ids)
       if results.empty? && !ids.empty?
-        raise RecordNotFound.new("Couldn't find #{name.split("::").last} with '#{primary_key}' in #{ids.inspect}")
+        raise RecordNotFound.new("Couldn't find #{model_name} with '#{primary_key}' in #{ids.inspect}")
       end
       results
     end
@@ -439,7 +449,7 @@ module Takarik::Data
     # Examples:
     #   Customer.first!  # => Customer or raises RecordNotFound
     def self.first!
-      first || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      first || raise RecordNotFound.new("Couldn't find #{model_name}")
     end
 
     # Find up to the specified number of records ordered by primary key.
@@ -450,7 +460,7 @@ module Takarik::Data
     def self.first!(limit : Int32)
       results = first(limit)
       if results.empty?
-        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+        raise RecordNotFound.new("Couldn't find #{model_name}")
       end
       results
     end
@@ -518,7 +528,7 @@ module Takarik::Data
     # Examples:
     #   Customer.last!  # => Customer or raises RecordNotFound
     def self.last!
-      last || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      last || raise RecordNotFound.new("Couldn't find #{model_name}")
     end
 
     # Find up to the specified number of records ordered by primary key in reverse.
@@ -529,7 +539,7 @@ module Takarik::Data
     def self.last!(limit : Int32)
       results = last(limit)
       if results.empty?
-        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+        raise RecordNotFound.new("Couldn't find #{model_name}")
       end
       results
     end
@@ -559,7 +569,7 @@ module Takarik::Data
     # Examples:
     #   Customer.take!  # => Customer or raises RecordNotFound
     def self.take!
-      take || raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+      take || raise RecordNotFound.new("Couldn't find #{model_name}")
     end
 
     # Retrieve up to the specified number of records without any implicit ordering.
@@ -570,7 +580,7 @@ module Takarik::Data
     def self.take!(limit : Int32)
       results = take(limit)
       if results.empty?
-        raise RecordNotFound.new("Couldn't find #{name.split("::").last}")
+        raise RecordNotFound.new("Couldn't find #{model_name}")
       end
       results
     end
@@ -1135,7 +1145,7 @@ module Takarik::Data
             # Handle polymorphic association
             primary_key_value = value.get_attribute(association.primary_key)
             processed[association.foreign_key] = primary_key_value
-            processed[association.polymorphic_type.not_nil!] = value.class.name.split("::").last
+            processed[association.polymorphic_type.not_nil!] = self.class.model_name_from(value.class)
           else
             # Handle regular belongs_to association
             primary_key_value = value.get_attribute(association.primary_key)
@@ -1344,7 +1354,7 @@ module Takarik::Data
             # Handle polymorphic association
             primary_key_value = value.get_attribute(association.primary_key)
             processed[association.foreign_key] = primary_key_value
-            processed[association.polymorphic_type.not_nil!] = value.class.name.split("::").last
+            processed[association.polymorphic_type.not_nil!] = model_name_from(value.class)
           else
             # Handle regular belongs_to association
             primary_key_value = value.get_attribute(association.primary_key)
@@ -1578,7 +1588,7 @@ module Takarik::Data
 
           # Check if all composite keys were found
           if results.size != composite_keys.size
-            raise RecordNotFound.new("Couldn't find all #{name.split("::").last} with composite keys #{composite_keys.inspect} (found #{results.size} results, but was looking for #{composite_keys.size})")
+            raise RecordNotFound.new("Couldn't find all #{model_name} with composite keys #{composite_keys.inspect} (found #{results.size} results, but was looking for #{composite_keys.size})")
           end
 
           results
@@ -1586,13 +1596,13 @@ module Takarik::Data
 
         # Find with exception for composite keys
         def self.find!(composite_key : Array)
-          find(composite_key) || raise RecordNotFound.new("Couldn't find #{name.split("::").last} with composite key #{composite_key.inspect}")
+          find(composite_key) || raise RecordNotFound.new("Couldn't find #{model_name} with composite key #{composite_key.inspect}")
         end
 
         def self.find!(composite_keys : Array(Array))
           results = find(composite_keys)
           if results.empty? && !composite_keys.empty?
-            raise RecordNotFound.new("Couldn't find #{name.split("::").last} with composite keys #{composite_keys.inspect}")
+            raise RecordNotFound.new("Couldn't find #{model_name} with composite keys #{composite_keys.inspect}")
           end
           results
         end
