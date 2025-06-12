@@ -541,6 +541,14 @@ module Takarik::Data
       query.strict_loading
     end
 
+    def self.create_with(attributes : Hash(String, DB::Any))
+      query.create_with(attributes)
+    end
+
+    def self.create_with(**attributes)
+      query.create_with(**attributes)
+    end
+
     def self.merge(other_relation : QueryBuilder)
       query.merge(other_relation)
     end
@@ -877,6 +885,158 @@ module Takarik::Data
 
     def self.find_by!(**conditions)
       where(**conditions).take!
+    end
+
+    # ========================================
+    # CLASS METHODS - FIND OR CREATE
+    # ========================================
+
+    # Find the first record matching the given conditions or create a new one.
+    # Returns the existing record if found, otherwise creates and returns a new record.
+    #
+    # Examples:
+    #   Customer.find_or_create_by(first_name: "Andy")
+    #   Customer.find_or_create_by(first_name: "Andy", last_name: "Smith")
+    #
+    # With a block to set additional attributes only when creating:
+    #   Customer.find_or_create_by(first_name: "Andy") do |customer|
+    #     customer.locked = false
+    #   end
+    #
+    # SQL: SELECT * FROM customers WHERE (customers.first_name = 'Andy') LIMIT 1
+    # If not found: INSERT INTO customers (first_name, ...) VALUES ('Andy', ...)
+    def self.find_or_create_by(conditions : Hash(String, DB::Any), &block : self ->)
+      record = find_by(conditions)
+      return record if record
+
+      # Create new record
+      instance = new
+      conditions.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance.save
+      instance
+    end
+
+    def self.find_or_create_by(conditions : Hash(String, DB::Any))
+      record = find_by(conditions)
+      return record if record
+
+      # Create new record
+      create(conditions)
+    end
+
+    def self.find_or_create_by(**conditions, &block : self ->)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_create_by(processed_conditions, &block)
+    end
+
+    def self.find_or_create_by(**conditions)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_create_by(processed_conditions)
+    end
+
+    # Find the first record matching the given conditions or create a new one.
+    # Raises an exception if the new record is invalid.
+    #
+    # Examples:
+    #   Customer.find_or_create_by!(first_name: "Andy")
+    #   Customer.find_or_create_by!(first_name: "Andy") { |c| c.locked = false }
+    def self.find_or_create_by!(conditions : Hash(String, DB::Any), &block : self ->)
+      record = find_by(conditions)
+      return record if record
+
+      # Create new record
+      instance = new
+      conditions.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance.save!
+      instance
+    end
+
+    def self.find_or_create_by!(conditions : Hash(String, DB::Any))
+      record = find_by(conditions)
+      return record if record
+
+      # Create new record with validation
+      instance = new
+      conditions.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+      instance.save!
+      instance
+    end
+
+    def self.find_or_create_by!(**conditions, &block : self ->)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_create_by!(processed_conditions, &block)
+    end
+
+    def self.find_or_create_by!(**conditions)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_create_by!(processed_conditions)
+    end
+
+    # Find the first record matching the given conditions or initialize a new one.
+    # The new record will not be saved to the database.
+    #
+    # Examples:
+    #   nina = Customer.find_or_initialize_by(first_name: "Nina")
+    #   nina.persisted?  # => false
+    #   nina.new_record?  # => true
+    #   nina.save  # Save when ready
+    #
+    # With a block to set additional attributes only when initializing:
+    #   Customer.find_or_initialize_by(first_name: "Nina") do |customer|
+    #     customer.locked = false
+    #   end
+    #
+    # SQL: SELECT * FROM customers WHERE (customers.first_name = 'Nina') LIMIT 1
+    def self.find_or_initialize_by(conditions : Hash(String, DB::Any), &block : self ->)
+      record = find_by(conditions)
+      return record if record
+
+      # Initialize new record
+      instance = new
+      conditions.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance
+    end
+
+    def self.find_or_initialize_by(conditions : Hash(String, DB::Any))
+      record = find_by(conditions)
+      return record if record
+
+      # Initialize new record
+      instance = new
+      conditions.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+      instance
+    end
+
+    def self.find_or_initialize_by(**conditions, &block : self ->)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_initialize_by(processed_conditions, &block)
+    end
+
+    def self.find_or_initialize_by(**conditions)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      find_or_initialize_by(processed_conditions)
     end
 
     # ========================================

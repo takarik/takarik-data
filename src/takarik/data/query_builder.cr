@@ -37,6 +37,7 @@ module Takarik::Data
     @eager_loads = [] of String
     @lock_clause : String?
     @strict_loading = false
+    @create_with_attributes = {} of String => DB::Any
 
     def initialize(@model_class : T.class)
     end
@@ -61,6 +62,7 @@ module Takarik::Data
       new_query.copy_eager_loads(@eager_loads.dup)
       new_query.set_lock(@lock_clause)
       new_query.set_strict_loading(@strict_loading)
+      new_query.set_create_with_attributes(@create_with_attributes.dup)
       new_query
     end
 
@@ -837,6 +839,11 @@ module Takarik::Data
       self
     end
 
+    def set_create_with_attributes(attributes : Hash(String, DB::Any))
+      @create_with_attributes = attributes
+      self
+    end
+
     # Getter methods for debugging
     def order_clauses
       @order_clauses
@@ -1062,6 +1069,29 @@ module Takarik::Data
       new_query = dup
       new_query.set_strict_loading(true)
       new_query
+    end
+
+    # ========================================
+    # CREATE WITH METHODS
+    # ========================================
+
+    # Set default attributes that will be used when creating new records.
+    # These attributes are only applied when creating new records, not when finding existing ones.
+    #
+    # Examples:
+    #   Customer.create_with(locked: false).find_or_create_by(first_name: "Andy")
+    #   User.create_with(active: true, role: "user").find_or_create_by(email: "test@example.com")
+    #
+    # The create_with attributes are merged with the find_or_create_by conditions when creating.
+    def create_with(attributes : Hash(String, DB::Any))
+      new_query = dup
+      new_query.set_create_with_attributes(@create_with_attributes.merge(attributes))
+      new_query
+    end
+
+    def create_with(**attributes)
+      processed_attributes = attributes.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      create_with(processed_attributes)
     end
 
     # Merge another relation's conditions, replacing existing ones where they conflict
@@ -1578,6 +1608,135 @@ module Takarik::Data
 
     def maximum(column : String)
       aggregate("MAX", column)
+    end
+
+    # ========================================
+    # FIND OR CREATE METHODS
+    # ========================================
+
+    # Find the first record matching the current query conditions or create a new one.
+    # Uses any create_with attributes when creating new records.
+    #
+    # Examples:
+    #   User.where(active: true).find_or_create_by(name: "Andy")
+    #   User.create_with(role: "user").find_or_create_by(email: "test@example.com")
+    def find_or_create_by(conditions : Hash(String, DB::Any), &block : T ->)
+      record = where(conditions).take
+      return record if record
+
+      # Create new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      instance = @model_class.new
+      all_attributes.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance.save
+      instance
+    end
+
+    def find_or_create_by(conditions : Hash(String, DB::Any))
+      record = where(conditions).take
+      return record if record
+
+      # Create new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      @model_class.create(all_attributes)
+    end
+
+    def find_or_create_by(**conditions, &block : T ->)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_create_by(processed_conditions, &block)
+    end
+
+    def find_or_create_by(**conditions)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_create_by(processed_conditions)
+    end
+
+    def find_or_create_by!(conditions : Hash(String, DB::Any), &block : T ->)
+      record = where(conditions).take
+      return record if record
+
+      # Create new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      instance = @model_class.new
+      all_attributes.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance.save!
+      instance
+    end
+
+    def find_or_create_by!(conditions : Hash(String, DB::Any))
+      record = where(conditions).take
+      return record if record
+
+      # Create new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      instance = @model_class.new
+      all_attributes.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+      instance.save!
+      instance
+    end
+
+    def find_or_create_by!(**conditions, &block : T ->)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_create_by!(processed_conditions, &block)
+    end
+
+    def find_or_create_by!(**conditions)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_create_by!(processed_conditions)
+    end
+
+    def find_or_initialize_by(conditions : Hash(String, DB::Any), &block : T ->)
+      record = where(conditions).take
+      return record if record
+
+      # Initialize new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      instance = @model_class.new
+      all_attributes.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+
+      # Apply any additional attributes from the block
+      yield instance
+
+      instance
+    end
+
+    def find_or_initialize_by(conditions : Hash(String, DB::Any))
+      record = where(conditions).take
+      return record if record
+
+      # Initialize new record with both conditions and create_with attributes
+      all_attributes = @create_with_attributes.merge(conditions)
+      instance = @model_class.new
+      all_attributes.each do |key, value|
+        instance.set_attribute(key, value)
+      end
+      instance
+    end
+
+    def find_or_initialize_by(**conditions, &block : T ->)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_initialize_by(processed_conditions, &block)
+    end
+
+    def find_or_initialize_by(**conditions)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      find_or_initialize_by(processed_conditions)
     end
 
     # ========================================
@@ -2732,10 +2891,7 @@ module Takarik::Data
            [] []? at at? fetch
          ] %}
 
-      {% query_builder_methods = %w[
-           unscope only reselect reorder rewhere regroup reverse_order
-         ] %}
-
+      {% query_builder_methods = %w[unscope only reselect reorder rewhere regroup reverse_order] %}
       {% method_name = call.name.stringify %}
 
       {% if array_methods.includes?(method_name) %}
@@ -2763,7 +2919,7 @@ module Takarik::Data
           end
         rescue ex
           # If method doesn't exist on model class, raise a more helpful error
-          raise "Method "{{call.name.id}}" not found on #{@model_class.name} or QueryBuilder"
+          raise "Method " + {{call.name.id.stringify}} + " not found on " + @model_class.name + " or QueryBuilder"
         end
       {% end %}
     end
