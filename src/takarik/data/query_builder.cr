@@ -1064,6 +1064,40 @@ module Takarik::Data
       new_query
     end
 
+    # Merge another relation's conditions, replacing existing ones where they conflict
+    # This is useful for overriding conditions from scopes or previous where clauses
+    #
+    # Examples:
+    #   Book.in_print.merge(Book.out_of_print)  # out_of_print condition wins
+    #   User.where(active: true).merge(User.where(active: false))  # active: false wins
+    #
+    # The merge method replaces conflicting conditions rather than adding them with AND
+    def merge(other_relation : QueryBuilder(T))
+      new_query = dup
+
+      # Replace where conditions and parameters entirely
+      new_query.set_where_conditions(other_relation.@where_conditions.dup, other_relation.@where_params.dup)
+
+      # Replace other query parts if they exist in the other relation
+      new_query.set_order_clauses(other_relation.@order_clauses.dup) unless other_relation.@order_clauses.empty?
+      new_query.set_group(other_relation.@group_clause) if other_relation.@group_clause
+      new_query.set_having_conditions(other_relation.@having_conditions.dup, other_relation.@having_params.dup) unless other_relation.@having_conditions.empty?
+      new_query.set_limit(other_relation.@limit_value) if other_relation.@limit_value
+      new_query.set_offset(other_relation.@offset_value) if other_relation.@offset_value
+      new_query.set_select(other_relation.@select_clause) if other_relation.@select_clause
+      new_query.set_distinct(other_relation.@distinct) if other_relation.@distinct
+      new_query.set_joins(other_relation.@joins.dup, other_relation.@has_joins) if other_relation.@has_joins
+      new_query.copy_includes(other_relation.@includes.dup) unless other_relation.@includes.empty?
+      new_query.copy_preloads(other_relation.@preloads.dup) unless other_relation.@preloads.empty?
+      new_query.copy_eager_loads(other_relation.@eager_loads.dup) unless other_relation.@eager_loads.empty?
+      new_query.set_none(other_relation.@none) if other_relation.@none
+      new_query.set_readonly(other_relation.@readonly) if other_relation.@readonly
+      new_query.set_lock(other_relation.@lock_clause) if other_relation.@lock_clause
+      new_query.set_strict_loading(other_relation.@strict_loading) if other_relation.@strict_loading
+
+      new_query
+    end
+
     # ========================================
     # LOCKING METHODS
     # ========================================

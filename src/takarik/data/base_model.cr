@@ -520,6 +520,10 @@ module Takarik::Data
       query.strict_loading
     end
 
+    def self.merge(other_relation : QueryBuilder)
+      query.merge(other_relation)
+    end
+
     def self.having(condition : String)
       query.having(condition)
     end
