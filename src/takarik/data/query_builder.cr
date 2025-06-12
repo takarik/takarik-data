@@ -1591,6 +1591,68 @@ module Takarik::Data
     end
 
     # ========================================
+    # SELECT_ALL, PICK, AND IDS METHODS
+    # ========================================
+
+    # Execute a custom SQL query and return raw results as an array of hashes.
+    # This is similar to find_by_sql but returns raw data instead of model instances.
+    # This method is equivalent to Rails' lease_connection.select_all.
+    #
+    # Examples:
+    #   Customer.select_all("SELECT first_name, created_at FROM customers WHERE id = '1'")
+    #   # => [{"first_name" => "Rafael", "created_at" => "2012-11-10 23:23:45.281189"}]
+    #
+    # The method always returns an array of hashes, even if the query returns a single record.
+    # Returns an empty array if no records are found.
+    def select_all(sql : String, params : Array(DB::Any) = [] of DB::Any)
+      results = [] of Hash(String, DB::Any)
+
+      Takarik::Data.query_with_logging(@model_class.connection, sql, params, @model_class.name, "Load") do |rs|
+        while rs.move_next
+          row = {} of String => DB::Any
+          rs.column_names.each_with_index do |column_name, index|
+            row[column_name] = rs.read
+          end
+          results << row
+        end
+      end
+
+      results
+    end
+
+    def select_all(sql : String, *params : DB::Any)
+      select_all(sql, params.to_a)
+    end
+
+    # Pick the value(s) from the named column(s) in the current relation.
+    # Returns the first row of the specified column values with corresponding data type.
+    # This is a short-hand for relation.limit(1).pluck(*column_names).first.
+    #
+    # Examples:
+    #   Customer.where(id: 1).pick(:id)  # => 1
+    #   Customer.where(id: 1).pick(:id, :first_name)  # => [1, "David"]
+    #   Customer.where(id: 999).pick(:id)  # => nil
+    def pick(column : String)
+      result = limit(1).pluck(column)
+      result.first?
+    end
+
+    def pick(*columns : String)
+      result = limit(1).pluck(*columns)
+      result.first?
+    end
+
+    # Pluck all the IDs for the relation using the table's primary key.
+    # This is a convenience method equivalent to pluck(primary_key).
+    #
+    # Examples:
+    #   Customer.ids  # => [1, 2, 3]
+    #   Customer.where(active: true).ids  # => [1, 3]
+    def ids
+      pluck(@model_class.primary_key)
+    end
+
+    # ========================================
     # AGGREGATION METHODS
     # ========================================
 

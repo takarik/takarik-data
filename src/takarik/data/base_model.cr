@@ -1075,6 +1075,66 @@ module Takarik::Data
     end
 
     # ========================================
+    # CLASS METHODS - SELECT ALL, PLUCK, PICK, IDS
+    # ========================================
+
+    # Execute a custom SQL query and return raw results as an array of hashes.
+    # This is similar to find_by_sql but returns raw data instead of model instances.
+    # This method is equivalent to Rails' lease_connection.select_all.
+    #
+    # Examples:
+    #   Customer.select_all("SELECT first_name, created_at FROM customers WHERE id = '1'")
+    #   # => [{"first_name" => "Rafael", "created_at" => "2012-11-10 23:23:45.281189"}]
+    def self.select_all(sql : String, params : Array(DB::Any) = [] of DB::Any)
+      query.select_all(sql, params)
+    end
+
+    def self.select_all(sql : String, *params : DB::Any)
+      query.select_all(sql, params.to_a)
+    end
+
+    # Pick the value(s) from the named column(s) using the table's primary key ordering.
+    # Returns the first row of the specified column values with corresponding data type.
+    # This is a short-hand for relation.limit(1).pluck(*column_names).first.
+    #
+    # Examples:
+    #   Customer.pick(:id)  # => 1
+    #   Customer.pick(:id, :first_name)  # => [1, "David"]
+    #   Customer.where(id: 999).pick(:id)  # => nil
+    def self.pick(column : String)
+      query.pick(column)
+    end
+
+    def self.pick(*columns : String)
+      query.pick(*columns)
+    end
+
+    # Pluck the value(s) from the named column(s) in the current relation.
+    # Returns an array of values of the specified columns with the corresponding data type.
+    #
+    # Examples:
+    #   Book.where(out_of_print: true).pluck(:id)  # => [1, 2, 3]
+    #   Order.distinct.pluck(:status)  # => ["shipped", "being_packed", "cancelled"]
+    #   Customer.pluck(:id, :first_name)  # => [[1, "David"], [2, "Fran"], [3, "Jose"]]
+    def self.pluck(column : String)
+      query.pluck(column)
+    end
+
+    def self.pluck(*columns : String)
+      query.pluck(*columns)
+    end
+
+    # Pluck all the IDs for the relation using the table's primary key.
+    # This is a convenience method equivalent to pluck(primary_key).
+    #
+    # Examples:
+    #   Customer.ids  # => [1, 2, 3]
+    #   Customer.where(active: true).ids  # => [1, 3]
+    def self.ids
+      query.ids
+    end
+
+    # ========================================
     # CLASS METHODS - BATCH PROCESSING
     # ========================================
 
