@@ -61,7 +61,7 @@ describe "GROUP BY functionality" do
       result.should eq({"1" => 3_i64, "0" => 2_i64})
     end
 
-        it "returns hash for multiple column group" do
+    it "returns hash for multiple column group" do
       result = User.group(:active, :age).count
       result.should be_a(Hash(String, Int64))
 
@@ -148,7 +148,7 @@ describe "GROUP BY functionality" do
     end
   end
 
-    describe "ActiveRecord compatibility examples" do
+  describe "ActiveRecord compatibility examples" do
     it "matches ActiveRecord example: Order.select('created_at').group('created_at')" do
       query = User.select("created_at").group("created_at")
       query.to_sql.should eq("SELECT created_at FROM users GROUP BY created_at")

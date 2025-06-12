@@ -430,13 +430,81 @@ module Takarik::Data
     # JOIN METHODS
     # ========================================
 
-    def join(association_name : String | Symbol)
-      @has_joins = true
-      add_smart_association_join(association_name.to_s)
+    # Rails-compatible joins method that supports multiple associations and nested joins
+    # Examples:
+    #   User.joins(:posts)                           # Single association
+    #   User.joins(:posts, :account)                 # Multiple associations
+    #   User.joins(posts: [:comments])               # Nested joins
+    #   User.joins("LEFT JOIN bookmarks ON ...")     # Custom SQL
+    def joins(*associations : String | Symbol)
+      associations.each do |association|
+        @has_joins = true
+        add_smart_association_join(association.to_s)
+      end
+      self
     end
 
-    def join(table : String, on : String)
+    def joins(associations : Array(String | Symbol))
+      associations.each do |association|
+        @has_joins = true
+        add_smart_association_join(association.to_s)
+      end
+      self
+    end
+
+    def joins(nested_associations : Hash(String | Symbol, Array(String | Symbol) | String | Symbol))
+      nested_associations.each do |parent_association, child_associations|
+        # First join the parent association
+        @has_joins = true
+        add_smart_association_join(parent_association.to_s)
+
+        # Then join the child associations
+        case child_associations
+        when Array
+          child_associations.each do |child_association|
+            join_nested_association(parent_association.to_s, child_association.to_s)
+          end
+        when String, Symbol
+          join_nested_association(parent_association.to_s, child_associations.to_s)
+        end
+      end
+      self
+    end
+
+    def joins(table : String, on : String)
+      # Handle table joins with ON clause
       add_join("JOIN", table, on)
+    end
+
+    def joins(custom_sql : String)
+      # Handle custom SQL joins like Rails
+      # Check if it's a table join with ON clause
+      if custom_sql.upcase.includes?(" ON ")
+        @has_joins = true
+        @joins << custom_sql
+      else
+        # Treat as single association name
+        @has_joins = true
+        add_smart_association_join(custom_sql)
+      end
+      self
+    end
+
+    # Support for NamedTuple syntax: User.joins(posts: [:comments])
+    def joins(**named_associations)
+      # Convert NamedTuple to Hash
+      hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+      named_associations.each do |key, value|
+        case value
+        when Array
+          hash[key.to_s] = value.map(&.as(String | Symbol)).as(Array(String | Symbol) | String | Symbol)
+        when String, Symbol
+          hash[key.to_s] = value.as(Array(String | Symbol) | String | Symbol)
+        else
+          raise "Invalid association value type: #{value.class}"
+        end
+      end
+      joins(hash)
     end
 
     def inner_join(association_name : String | Symbol)
@@ -1975,6 +2043,51 @@ module Takarik::Data
                   end
 
       add_association_join(join_type, association_name)
+    end
+
+    # Handle nested association joins like User.joins(posts: [:comments])
+    private def join_nested_association(parent_association : String, child_association : String)
+      # Get the parent association to find the intermediate model
+      parent_associations = @model_class.associations
+      parent_assoc = parent_associations.find { |a| a.name == parent_association }
+
+      unless parent_assoc && parent_assoc.class_type
+        raise "Parent association '#{parent_association}' not found or invalid for #{@model_class.name}"
+      end
+
+      # Get the intermediate model class (e.g., Post in User -> Post -> Comment)
+      intermediate_model = parent_assoc.class_type.not_nil!
+
+      # Find the child association on the intermediate model
+      child_associations = intermediate_model.associations
+      child_assoc = child_associations.find { |a| a.name == child_association }
+
+      unless child_assoc && child_assoc.class_type
+        raise "Child association '#{child_association}' not found on #{intermediate_model.name}"
+      end
+
+      # Skip polymorphic associations
+      if child_assoc.not_nil!.polymorphic || child_assoc.not_nil!.class_type.nil?
+        raise "Cannot join polymorphic association '#{child_association}'"
+      end
+
+      # Build the join for the child association
+      intermediate_table = intermediate_model.table_name
+      child_table = child_assoc.not_nil!.class_type.not_nil!.table_name
+
+      case child_assoc.not_nil!.type
+      when .belongs_to?
+        on_condition = "#{intermediate_table}.#{child_assoc.not_nil!.foreign_key} = #{child_table}.#{child_assoc.not_nil!.primary_key}"
+      when .has_many?, .has_one?
+        on_condition = "#{intermediate_table}.#{child_assoc.not_nil!.primary_key} = #{child_table}.#{child_assoc.not_nil!.foreign_key}"
+      else
+        raise "Unknown association type: #{child_assoc.not_nil!.type}"
+      end
+
+      # Choose appropriate join type (using INNER JOIN for nested joins by default, like Rails)
+      join_type = "INNER JOIN"
+      @joins << "#{join_type} #{child_table} ON #{on_condition}"
+      @has_joins = true
     end
 
     private def add_includes(association_name : String)

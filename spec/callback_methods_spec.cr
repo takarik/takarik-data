@@ -865,7 +865,7 @@ class TouchTestUser < Takarik::Data::BaseModel
   table_name "users"
   column :name, String
   column :email, String
-  timestamps  # adds created_at and updated_at
+  timestamps # adds created_at and updated_at
 end
 
 describe "Touch Method" do
@@ -876,7 +876,7 @@ describe "Touch Method" do
     user.save
 
     original_updated_at = user.updated_at
-    sleep 0.001.seconds  # Ensure time difference
+    sleep 0.001.seconds # Ensure time difference
 
     result = user.touch
     result.should be_true
@@ -1112,8 +1112,8 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when any symbol condition is false" do
       user = EnhancedCallbackUser.new
-      user.name = "Regular User"  # Not admin, so won't trigger single_symbol_callback
-      user.email = ""  # has_email? returns false
+      user.name = "Regular User" # Not admin, so won't trigger single_symbol_callback
+      user.email = ""            # has_email? returns false
       user.save
 
       email = user.email || ""
@@ -1134,7 +1134,7 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when proc condition is false" do
       user = EnhancedCallbackUser.new
-      user.name = "Admin User"  # doesn't include "Mixed"
+      user.name = "Admin User" # doesn't include "Mixed"
       user.email = "admin@example.com"
       user.save
 
@@ -1156,7 +1156,7 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when proc with parameter is false" do
       user = EnhancedCallbackUser.new
-      user.name = "Regular User"  # doesn't include "Param"
+      user.name = "Regular User" # doesn't include "Param"
       user.email = "regular@example.com"
       user.save
 
@@ -1168,7 +1168,7 @@ describe "Enhanced Callback Conditions" do
   describe "combined if and unless conditions" do
     it "executes callback when if is true and unless is false" do
       user = EnhancedCallbackUser.new
-      user.name = "Combined User"  # includes "Combined", doesn't include "Blocked"
+      user.name = "Combined User" # includes "Combined", doesn't include "Blocked"
       user.email = "combined@example.com"
       user.save
 
@@ -1178,7 +1178,7 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when if is true but unless is also true" do
       user = EnhancedCallbackUser.new
-      user.name = "Combined Blocked User"  # includes both "Combined" and "Blocked"
+      user.name = "Combined Blocked User" # includes both "Combined" and "Blocked"
       user.email = "blocked@example.com"
       user.save
 
@@ -1188,7 +1188,7 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when if is false" do
       user = EnhancedCallbackUser.new
-      user.name = "Regular User"  # doesn't include "Combined"
+      user.name = "Regular User" # doesn't include "Combined"
       user.email = "regular@example.com"
       user.save
 
@@ -1200,7 +1200,7 @@ describe "Enhanced Callback Conditions" do
   describe "array of unless conditions" do
     it "executes callback when all unless conditions are false" do
       user = EnhancedCallbackUser.new
-      user.name = "Regular User"  # doesn't include "Blocked" or "Skip"
+      user.name = "Regular User" # doesn't include "Blocked" or "Skip"
       user.email = "regular@example.com"
       user.save
 
@@ -1210,7 +1210,7 @@ describe "Enhanced Callback Conditions" do
 
     it "does not execute callback when any unless condition is true" do
       user = EnhancedCallbackUser.new
-      user.name = "Blocked User"  # includes "Blocked"
+      user.name = "Blocked User" # includes "Blocked"
       user.email = "blocked@example.com"
       user.save
 
@@ -1218,7 +1218,7 @@ describe "Enhanced Callback Conditions" do
       email.should_not contain("array_unless;")
 
       user2 = EnhancedCallbackUser.new
-      user2.name = "Skip User"  # includes "Skip"
+      user2.name = "Skip User" # includes "Skip"
       user2.email = "skip@example.com"
       user2.save
 
@@ -1363,7 +1363,7 @@ describe "dependent associations" do
       category.destroy.should be_true
 
       # Verify products still exist but with null category_id
-      ProductNullify.count.as(Int64).should be >= 2  # Products still exist
+      ProductNullify.count.as(Int64).should be >= 2 # Products still exist
       product1.reload
       product2.reload
       product1.category_id.should be_nil
@@ -1388,8 +1388,8 @@ describe "dependent associations" do
       EmployeeIndependent.where(company_id: company.id).count.should eq(2)
       emp1.reload
       emp2.reload
-      emp1.company_id.should eq(company.id)  # Foreign key preserved
-      emp2.company_id.should eq(company.id)  # Foreign key preserved
+      emp1.company_id.should eq(company.id) # Foreign key preserved
+      emp2.company_id.should eq(company.id) # Foreign key preserved
     end
   end
 

@@ -73,7 +73,7 @@ describe "Scope Chaining" do
       sql.should contain("WHERE")
       sql.should contain("price > ?")
       sql.should contain("stock_count < ?")
-      sql.should contain("AND")  # Should have both conditions joined with AND
+      sql.should contain("AND") # Should have both conditions joined with AND
     end
 
     it "mixes scope chaining with QueryBuilder methods" do
@@ -84,7 +84,7 @@ describe "Scope Chaining" do
       # Test scope + QueryBuilder methods: active.expensive.where("stock_count > ?", 0).order(:price)
       result = ChainableProduct.active.expensive.where("stock_count > ?", 0).order(:price).to_a
       result.size.should eq(2)
-      result.first.name.should eq("Expensive Book")  # Lower price, should be first
+      result.first.name.should eq("Expensive Book") # Lower price, should be first
       result.last.name.should eq("Laptop")
 
       # Verify SQL generation
@@ -121,10 +121,10 @@ describe "Scope Chaining" do
 
       # Test conditional scope chaining
       result1 = ChainableProduct.active.published_before(2020).to_a
-      result1.size.should eq(1)  # Should find the book published in 2015
+      result1.size.should eq(1) # Should find the book published in 2015
 
       result2 = ChainableProduct.active.published_before(nil).to_a
-      result2.size.should eq(1)  # Should return all since condition is nil
+      result2.size.should eq(1) # Should return all since condition is nil
     end
 
     it "maintains chainability even when scopes return all" do

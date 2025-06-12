@@ -99,7 +99,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
 
   describe "Basic includes per ActiveRecord specification" do
     it "should work with the exact ActiveRecord pattern" do
-
       # Create test data
       author1 = AuthorAdvanced.create(first_name: "J.K.", last_name: "Rowling")
       author2 = AuthorAdvanced.create(first_name: "Stephen", last_name: "King")
@@ -113,9 +112,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         BookAdvanced.create(title: "It", author_id: author2.id, supplier_id: supplier.id, out_of_print: true),
         BookAdvanced.create(title: "Pet Sematary", author_id: author2.id, supplier_id: supplier.id, out_of_print: false),
       ]
-
-
-
 
       # Execute the includes query
       books_with_includes = BookAdvanced.includes(:author).limit(5)
@@ -141,13 +137,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       author_names.size.should eq(5)
       author_names.should contain("Rowling")
       author_names.should contain("King")
-
     end
   end
 
   describe "Multiple associations loading" do
     it "should support Customer.includes(:orders, :reviews)" do
-
       # Create test data
       customer = Customer.create(name: "John Doe", email: "john@example.com")
 
@@ -158,8 +152,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       # Create reviews
       review1 = Review.create(rating: 5, comment: "Great!", customer_id: customer.id)
       review2 = Review.create(rating: 4, comment: "Good", customer_id: customer.id)
-
-
 
       # Test multiple includes
       customers = Customer.includes(:orders, :reviews).to_a
@@ -174,13 +166,11 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
 
       orders.size.should eq(2)
       reviews.size.should eq(2)
-
     end
   end
 
   describe "Performance comparison" do
     it "demonstrates includes efficiency vs N+1 problem" do
-
       # Create test data at scale
       authors = [
         AuthorAdvanced.create(first_name: "Author", last_name: "One"),
@@ -201,8 +191,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         )
       end
 
-
-
       # Simulate N+1
       books_n1 = BookAdvanced.limit(15).to_a
       author_names_n1 = [] of String
@@ -213,8 +201,6 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
           author_names_n1 << author_name.to_s if author_name
         end
       end
-
-
 
       # Use includes
       books_includes = BookAdvanced.includes(:author).limit(15).to_a
@@ -227,11 +213,9 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
         end
       end
 
-
       # Verify both approaches give same results
       books_n1.size.should eq(books_includes.size)
       author_names_n1.sort.should eq(author_names_includes.sort)
-
     end
   end
 end

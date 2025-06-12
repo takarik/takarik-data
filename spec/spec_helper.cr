@@ -428,7 +428,7 @@ end
 
 class CompanyIndependent < Takarik::Data::BaseModel
   column name, String
-  has_many employees, class_name: EmployeeIndependent, foreign_key: "company_id"  # No dependent option
+  has_many employees, class_name: EmployeeIndependent, foreign_key: "company_id" # No dependent option
   timestamps
 end
 
@@ -442,7 +442,7 @@ end
 class OrderDependent < Takarik::Data::BaseModel
   column total, Float64
   column customer_id, Int64
-  belongs_to customer, class_name: CustomerDependent, foreign_key: "customer_id", dependent: :destroy, optional: true  # Should be ignored
+  belongs_to customer, class_name: CustomerDependent, foreign_key: "customer_id", dependent: :destroy, optional: true # Should be ignored
   timestamps
 end
 
@@ -536,7 +536,7 @@ Spec.before_each do
     "magazine_strings", "publisher_strings", "book_strings", "author_strings",
     "order_dependents", "customer_dependents", "employee_independents", "company_independents",
     "product_nullifies", "category_nullifies", "employee_delete_alls", "department_delete_alls",
-    "comments", "posts", "users"
+    "comments", "posts", "users",
   ]
 
   tables_to_clean.each do |table|

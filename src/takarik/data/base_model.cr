@@ -338,12 +338,29 @@ module Takarik::Data
       query.offset(count)
     end
 
-    def self.join(table : String, on : String)
-      query.join(table, on)
+    # Rails-compatible joins methods
+    def self.joins(*associations : String | Symbol)
+      query.joins(*associations)
     end
 
-    def self.join(association_name : String | Symbol)
-      query.join(association_name)
+    def self.joins(associations : Array(String | Symbol))
+      query.joins(associations)
+    end
+
+    def self.joins(nested_associations : Hash(String | Symbol, Array(String | Symbol) | String | Symbol))
+      query.joins(nested_associations)
+    end
+
+    def self.joins(custom_sql : String)
+      query.joins(custom_sql)
+    end
+
+    def self.joins(**named_associations)
+      query.joins(**named_associations)
+    end
+
+    def self.joins(table : String, on : String)
+      query.joins(table, on)
     end
 
     def self.inner_join(table : String, on : String)

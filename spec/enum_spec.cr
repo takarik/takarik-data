@@ -19,17 +19,17 @@ describe "Enum Support" do
   describe "enum declaration" do
     it "creates enum mappings" do
       OrderEnum.status_mappings.should eq({
-        "shipped" => 0,
+        "shipped"        => 0,
         "being_packaged" => 1,
-        "complete" => 2,
-        "cancelled" => 3
+        "complete"       => 2,
+        "cancelled"      => 3,
       })
 
       OrderEnum.priority_mappings.should eq({
-        "low" => 0,
+        "low"    => 0,
         "medium" => 1,
-        "high" => 2,
-        "urgent" => 3
+        "high"   => 2,
+        "urgent" => 3,
       })
     end
 
@@ -191,7 +191,7 @@ describe "Enum Support" do
 
   describe "enum with different scenarios" do
     it "works with records having nil enum values" do
-      order = OrderEnum.create(customer_name: "Test", status: 0)  # explicitly set to first enum value
+      order = OrderEnum.create(customer_name: "Test", status: 0) # explicitly set to first enum value
 
       order.shipped?.should be_true
       order.status_name.should eq("shipped")

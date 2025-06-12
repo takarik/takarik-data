@@ -28,7 +28,6 @@ end
 
 describe "ActiveRecord Preload Specification" do
   it "should follow ActiveRecord's preload behavior - 2 separate queries" do
-
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_pl")
     Takarik::Data.connection.exec(<<-SQL

@@ -131,9 +131,9 @@ describe Takarik::Data do
     it "handles validation errors properly" do
       # Test validation failure
       user = User.new
-      user.name = "A"  # Too short
-      user.email = "invalid-email"  # Invalid format
-      user.age = -5  # Invalid range
+      user.name = "A"              # Too short
+      user.email = "invalid-email" # Invalid format
+      user.age = -5                # Invalid range
 
       user.valid?.should be_false
       user.errors.size.should be > 0
@@ -179,7 +179,6 @@ describe Takarik::Data do
 
         # Simulate an error
         raise "Simulated error" if post.title == "Transaction Post"
-
       rescue
         # In a real transaction, this would rollback
         # For now, we'll manually clean up

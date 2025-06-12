@@ -28,7 +28,6 @@ end
 
 describe "ActiveRecord Eager Load Specification" do
   it "should follow ActiveRecord's eager_load behavior - 1 query with LEFT OUTER JOIN" do
-
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_el")
     Takarik::Data.connection.exec(<<-SQL
@@ -75,10 +74,8 @@ describe "ActiveRecord Eager Load Specification" do
       )
     end
 
-
     # Test eager_load
     books = BookEL.eager_load(:author_el).limit(10).to_a
-
 
     books.each_with_index do |book, index|
       author = book.author_el
@@ -92,7 +89,6 @@ describe "ActiveRecord Eager Load Specification" do
       book.author_el_loaded?.should be_true
     end
 
-
     # Test includes (LEFT JOIN - 1 query)
     books_inc = BookEL.includes(:author_el).limit(10).to_a
 
@@ -101,7 +97,6 @@ describe "ActiveRecord Eager Load Specification" do
 
     # Test eager_load (LEFT OUTER JOIN - 1 query)
     books_eager = BookEL.eager_load(:author_el).limit(10).to_a
-
 
     # Verify all approaches return same data
     books.size.should eq(10)
@@ -114,6 +109,4 @@ describe "ActiveRecord Eager Load Specification" do
     books_pre.all? { |book| book.author_el_loaded? }.should be_true
     books_eager.all? { |book| book.author_el_loaded? }.should be_true
   end
-
-
 end

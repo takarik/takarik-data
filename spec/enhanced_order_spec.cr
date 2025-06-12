@@ -63,8 +63,8 @@ describe "Enhanced Order Methods" do
 
     it "orders descending" do
       products = ProductOrder.order("price", "DESC").to_a
-      products[0].price.should eq(999.99)  # Laptop
-      products[4].price.should eq(12.99)   # Novel
+      products[0].price.should eq(999.99) # Laptop
+      products[4].price.should eq(12.99)  # Novel
     end
 
     it "generates correct SQL for string ordering" do
@@ -84,10 +84,10 @@ describe "Enhanced Order Methods" do
       # Books: Novel (12.99), Book (15.99)
       # Electronics: Laptop (999.99), Tablet (299.99), Mouse (25.99)
       products[0].category.should eq("Books")
-      products[0].price.should eq(15.99)  # Book (higher price in Books)
+      products[0].price.should eq(15.99) # Book (higher price in Books)
 
       products[1].category.should eq("Books")
-      products[1].price.should eq(12.99)  # Novel (lower price in Books)
+      products[1].price.should eq(12.99) # Novel (lower price in Books)
 
       products[2].category.should eq("Electronics")
       products[2].price.should eq(999.99) # Laptop (highest price in Electronics)
@@ -108,7 +108,7 @@ describe "Enhanced Order Methods" do
       # Rating 4: Mouse (25.99), Tablet (299.99)
       # Rating 3: Novel (12.99)
       products[0].rating.should eq(5)
-      products[0].price.should eq(15.99)  # Book (lowest price among rating 5)
+      products[0].price.should eq(15.99) # Book (lowest price among rating 5)
 
       products[1].rating.should eq(5)
       products[1].price.should eq(999.99) # Laptop

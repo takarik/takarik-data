@@ -57,9 +57,9 @@ class MixedValidationModel < Takarik::Data::BaseModel
   column :age, Int32
 
   # Mix legacy and new styles
-  validates_presence_of :name  # Legacy
-  validates :email, presence: true, format: {with: /@/}  # New
-  validates_length_of :name, minimum: 2  # Legacy
+  validates_presence_of :name                           # Legacy
+  validates :email, presence: true, format: {with: /@/} # New
+  validates_length_of :name, minimum: 2                 # Legacy
 
   timestamps
 end
@@ -87,40 +87,40 @@ describe "Generic Validates Macro" do
   describe "length validation" do
     it "validates minimum and maximum length" do
       user = GenericValidationUser.new
-      user.name = "A"  # Too short
+      user.name = "A" # Too short
       user.email = "test@example.com"
       user.age = 25
 
       user.valid?.should be_false
       user.errors["name"].should contain("is too short (minimum is 2 characters)")
 
-      user.name = "A" * 51  # Too long
+      user.name = "A" * 51 # Too long
       user.valid?.should be_false
       user.errors["name"].should contain("is too long (maximum is 50 characters)")
 
-      user.name = "John"  # Just right
+      user.name = "John" # Just right
       user.valid?.should be_true
     end
 
     it "validates exact length" do
       model = LengthTestModel.new
-      model.name = "1234"  # Too short
+      model.name = "1234" # Too short
 
       model.valid?.should be_false
       model.errors["name"].should contain("is the wrong length (should be 5 characters)")
 
-      model.name = "12345"  # Exact
+      model.name = "12345" # Exact
       model.valid?.should be_true
     end
 
     it "validates length range" do
       model = LengthTestModel.new
-      model.description = "123456789"  # Too short (9 chars)
+      model.description = "123456789" # Too short (9 chars)
 
       model.valid?.should be_false
       model.errors["description"].should contain("is the wrong length (should be within 10..100)")
 
-      model.description = "1234567890"  # Just right (10 chars)
+      model.description = "1234567890" # Just right (10 chars)
       model.valid?.should be_true
     end
   end
@@ -149,7 +149,7 @@ describe "Generic Validates Macro" do
       # Try to create second user with same email
       user2 = GenericValidationUser.new
       user2.name = "Jane"
-      user2.email = "john@example.com"  # Same email
+      user2.email = "john@example.com" # Same email
       user2.age = 25
 
       user2.valid?.should be_false
@@ -174,22 +174,22 @@ describe "Generic Validates Macro" do
       user = GenericValidationUser.new
       user.name = "John"
       user.email = "john@example.com"
-      user.age = -5  # Invalid
+      user.age = -5 # Invalid
 
       user.valid?.should be_false
       user.errors["age"].should contain("must be greater than 0")
 
-      user.age = 200  # Invalid
+      user.age = 200 # Invalid
       user.valid?.should be_false
       user.errors["age"].should contain("must be less than 150")
 
-      user.age = 25  # Valid
+      user.age = 25 # Valid
       user.valid?.should be_true
     end
 
     it "validates only_integer" do
       model = NumberTestModel.new
-      model.score = 100  # Valid integer
+      model.score = 100 # Valid integer
 
       model.valid?.should be_true
 
@@ -201,30 +201,30 @@ describe "Generic Validates Macro" do
 
     it "validates even numbers" do
       model = NumberTestModel.new
-      model.count = 3  # Odd number
+      model.count = 3 # Odd number
 
       model.valid?.should be_false
       model.errors["count"].should contain("must be even")
 
-      model.count = 4  # Even number
+      model.count = 4 # Even number
       model.valid?.should be_true
     end
 
     it "validates greater_than_or_equal_to and less_than_or_equal_to" do
       model = NumberTestModel.new
-      model.score = -1  # Less than 0
+      model.score = -1 # Less than 0
 
       model.valid?.should be_false
       model.errors["score"].should contain("must be greater than or equal to 0")
 
-      model.score = 0  # Exactly 0 - should be valid
+      model.score = 0 # Exactly 0 - should be valid
       model.valid?.should be_true
 
-      model.rating = 5.1  # Greater than 5.0
+      model.rating = 5.1 # Greater than 5.0
       model.valid?.should be_false
       model.errors["rating"].should contain("must be less than or equal to 5.0")
 
-      model.rating = 5.0  # Exactly 5.0 - should be valid
+      model.rating = 5.0 # Exactly 5.0 - should be valid
       model.valid?.should be_true
     end
   end
@@ -232,9 +232,9 @@ describe "Generic Validates Macro" do
   describe "multiple validations on single field" do
     it "applies all validations for a field" do
       user = GenericValidationUser.new
-      user.name = "A"  # Fails both presence and length
-      user.email = "invalid"  # Fails format
-      user.age = -5  # Fails numericality
+      user.name = "A"        # Fails both presence and length
+      user.email = "invalid" # Fails format
+      user.age = -5          # Fails numericality
 
       user.valid?.should be_false
 

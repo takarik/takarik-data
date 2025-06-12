@@ -162,7 +162,7 @@ describe "Polymorphic Associations" do
 
       # Employee's pictures should be destroyed
       remaining_picture_count = Picture.all.size
-      remaining_picture_count.should eq(1)  # Only product picture remains
+      remaining_picture_count.should eq(1) # Only product picture remains
 
       # Verify the remaining picture belongs to product
       remaining_picture = Picture.all.first.not_nil!
@@ -234,7 +234,7 @@ describe "Polymorphic Associations" do
     it "handles non-existent records gracefully" do
       picture = Picture.new
       picture.name = "Broken Link Picture"
-      picture.imageable_id = 99999  # Non-existent ID
+      picture.imageable_id = 99999 # Non-existent ID
       picture.imageable_type = "Employee"
       picture.save
 
@@ -268,8 +268,8 @@ describe "Polymorphic Associations" do
         as: {Int32?, String?}
       )
 
-      raw_picture[0].should eq(employee.id)  # imageable_id
-      raw_picture[1].should eq("Employee")   # imageable_type
+      raw_picture[0].should eq(employee.id) # imageable_id
+      raw_picture[1].should eq("Employee")  # imageable_type
     end
 
     it "maintains referential integrity with indexes" do

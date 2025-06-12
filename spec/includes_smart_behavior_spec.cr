@@ -30,7 +30,6 @@ end
 
 describe "Includes Smart Behavior (ActiveRecord 13.2)" do
   it "should use 2 queries by default, LEFT JOIN with conditions" do
-
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_smart")
     Takarik::Data.connection.exec(<<-SQL
@@ -78,10 +77,9 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
       BookSmart.create(
         title: "Book #{i + 1}",
         author_id: author.id,
-        out_of_print: i % 3 == 0  # Every 3rd book is out of print
+        out_of_print: i % 3 == 0 # Every 3rd book is out of print
       )
     end
-
 
     # Test 1: Default behavior (no conditions) - should use 2 separate queries
 
@@ -91,15 +89,15 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
 
     # This should trigger JOIN strategy
     authors_with_conditions = AuthorSmart.includes(:books_smart)
-                                         .where("books_smart.out_of_print = ?", true)
-                                         .to_a
+      .where("books_smart.out_of_print = ?", true)
+      .to_a
 
     # Test 3: Regular where conditions (not on associations) - should still use 2 queries
 
     books_regular_where = BookSmart.includes(:author_smart)
-                                   .where("title LIKE ?", "Book%")
-                                   .limit(5)
-                                   .to_a
+      .where("title LIKE ?", "Book%")
+      .limit(5)
+      .to_a
 
     # Verification
 
@@ -109,21 +107,18 @@ describe "Includes Smart Behavior (ActiveRecord 13.2)" do
     end
 
     authors_with_conditions.each do |author|
-      author.books_smart  # This should be accessible
+      author.books_smart # This should be accessible
     end
 
     books_regular_where.each do |book|
       book.author_smart_loaded?.should be_true
     end
 
-
     # Summary
-
-
 
     # Basic verification
     books_default.size.should be > 0
-    authors_with_conditions.size.should be >= 0  # May be 0 if no out-of-print books
+    authors_with_conditions.size.should be >= 0 # May be 0 if no out-of-print books
     books_regular_where.size.should be > 0
   end
 end

@@ -134,10 +134,10 @@ describe "String Class Names in Associations" do
 
       # Test dependent associations work for both
       user.destroy.should be_true
-      Post.count.should eq(0)  # Post should be destroyed with user
+      Post.count.should eq(0) # Post should be destroyed with user
 
       author.destroy.should be_true
-      BookString.count.should eq(0)  # BookString should be destroyed with author
+      BookString.count.should eq(0) # BookString should be destroyed with author
     end
   end
 

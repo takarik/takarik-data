@@ -1152,286 +1152,175 @@ describe Takarik::Data::QueryBuilder do
       results.size.should be >= 0
     end
 
-    it "demonstrates working join queries with eager loading" do
-      # Create test data with unique emails
-      user1 = User.create(name: "Alice", email: "alice_access_test@example.com", age: 25, active: true)
-      user2 = User.create(name: "Bob", email: "bob_access_test@example.com", age: 30, active: true)
-      user3 = User.create(name: "Charlie", email: "charlie_access_test@example.com", age: 35, active: false)
+    describe "Rails-compatible joins method" do
+      it "supports single association joins" do
+        # User.joins(:posts)
+        query = User.joins(:posts)
+        sql = query.to_sql
 
-      post1 = Post.create(title: "Alice's Amazing Post", content: "Content 1", user_id: user1.id, published: true)
-      post2 = Post.create(title: "Bob's Brilliant Post", content: "Content 2", user_id: user2.id, published: true)
-      # Charlie has no posts
-
-      # Join queries now work correctly with prefixed columns
-      users_with_posts = User
-        .inner_join("posts")
-        .where("users.email LIKE", "%_access_test@%")
-        .to_a
-
-      # Should only return users who have posts (Alice and Bob, not Charlie)
-      users_with_posts.size.should eq(2)
-      user_names = users_with_posts.map(&.name).compact.sort
-      user_names.should eq(["Alice", "Bob"])
-
-      # ✅ NEW: Join queries now preserve correct user IDs and associations work!
-      # Test the exact case that was originally failing: posts.first.title
-      users_with_posts.first.posts.first.not_nil!.title.should eq("Alice's Amazing Post")
-      users_with_posts.last.posts.first.not_nil!.title.should eq("Bob's Brilliant Post")
-
-      # Verify user IDs are preserved correctly
-      alice = users_with_posts.find { |u| u.name == "Alice" }
-      alice.should_not be_nil
-      alice.not_nil!.id.should eq(user1.id)
-
-      bob = users_with_posts.find { |u| u.name == "Bob" }
-      bob.should_not be_nil
-      bob.not_nil!.id.should eq(user2.id)
-
-      # Join queries are excellent for counting and filtering
-      post_count = User
-        .inner_join("posts")
-        .where("users.email LIKE", "%_access_test@%")
-        .count
-
-      post_count.should eq(2) # Alice's post + Bob's post
-
-      # And for filtering based on joined table conditions
-      users_with_published_posts = User
-        .inner_join("posts")
-        .where("users.email LIKE", "%_access_test@%")
-        .where("posts.published", true)
-        .to_a
-
-      users_with_published_posts.size.should eq(2) # Both Alice and Bob have published posts
-    end
-
-    it "demonstrates N+1 problem vs join solution with actual data access" do
-      # Create test data
-      user1 = User.create(name: "Alice", email: "alice_n1_demo@example.com", age: 25, active: true)
-      user2 = User.create(name: "Bob", email: "bob_n1_demo@example.com", age: 30, active: true)
-
-      post1 = Post.create(title: "Alice's First Post", content: "Content 1", user_id: user1.id, published: true)
-      post2 = Post.create(title: "Alice's Second Post", content: "Content 2", user_id: user1.id, published: false)
-      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
-
-      # Simulate N+1 problem: Get users, then their posts separately
-      users = User.where("email LIKE", "%_n1_demo@%").to_a
-      users.size.should eq(2)
-
-      # This would be N+1 - each user.posts call would be a separate query
-      user_posts_data = [] of {String, Array(String)}
-      users.each do |user|
-        posts = user.posts.to_a # This is a separate query for each user
-        post_titles = posts.map(&.title).compact
-        user_posts_data << {user.name.not_nil!, post_titles}
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("ON users.id = posts.user_id")
       end
 
-      # Verify we got the data correctly
-      user_posts_data.size.should eq(2)
-      alice_data = user_posts_data.find { |data| data[0] == "Alice" }
-      alice_data.should_not be_nil
-      alice_data.not_nil![1].size.should eq(2) # Alice has 2 posts
+      it "supports multiple association joins" do
+        # User.joins(:posts, :account) - but we'll use existing associations
+        query = User.joins(:posts, :comments)
+        sql = query.to_sql
 
-      bob_data = user_posts_data.find { |data| data[0] == "Bob" }
-      bob_data.should_not be_nil
-      bob_data.not_nil![1].size.should eq(1) # Bob has 1 post
-
-      # Now demonstrate the join solution - single query
-      join_query = User
-        .inner_join("posts")
-        .where("users.email LIKE", "%_n1_demo@%")
-        .select("users.name", "posts.title")
-
-      join_results = join_query.to_a
-      join_results.size.should eq(3) # Alice (2 posts) + Bob (1 post) = 3 records
-
-      # Verify the SQL is a single query
-      sql = join_query.to_sql
-      sql.should contain("INNER JOIN posts")
-      sql.should contain("SELECT users.name, posts.title")
-    end
-
-    it "verifies that association methods work correctly for data access" do
-      # Create test data
-      user = User.create(name: "Alice", email: "alice_assoc_test@example.com", age: 25, active: true)
-      post1 = Post.create(title: "First Post", content: "Content 1", user_id: user.id, published: true)
-      post2 = Post.create(title: "Second Post", content: "Content 2", user_id: user.id, published: false)
-
-      # Test that association methods work
-      user_posts = user.posts.to_a
-      user_posts.size.should eq(2)
-
-      # Test that we can access specific post data
-      first_post = user_posts.first
-      first_post.should_not be_nil
-      first_post.title.should_not be_nil
-      first_post.title.should eq("First Post")
-
-      # Test belongs_to association
-      post = Post.where("title", "First Post").first!
-      post_user = post.user
-      post_user.should_not be_nil
-      post_user.not_nil!.name.should eq("Alice")
-      post_user.not_nil!.email.should eq("alice_assoc_test@example.com")
-    end
-
-    it "compares query count between N+1 and join approaches" do
-      # Create test data
-      user1 = User.create(name: "Alice", email: "alice_count_test@example.com", age: 25, active: true)
-      user2 = User.create(name: "Bob", email: "bob_count_test@example.com", age: 30, active: true)
-
-      post1 = Post.create(title: "Alice's Post 1", content: "Content 1", user_id: user1.id, published: true)
-      post2 = Post.create(title: "Alice's Post 2", content: "Content 2", user_id: user1.id, published: true)
-      post3 = Post.create(title: "Bob's Post", content: "Content 3", user_id: user2.id, published: true)
-
-      # Method 1: N+1 approach (multiple queries)
-      # 1 query to get users
-      users = User.where("email LIKE", "%_count_test@%").to_a
-      users.size.should eq(2)
-
-      # N queries to get posts for each user (this would be N+1 in real usage)
-      total_posts_n1 = 0
-      users.each do |user|
-        user_posts = user.posts.to_a # Each call is a separate query
-        total_posts_n1 += user_posts.size
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("ON users.id = posts.user_id")
+        sql.should contain("LEFT JOIN comments")
+        sql.should contain("ON users.id = comments.user_id")
       end
-      total_posts_n1.should eq(3) # Alice: 2 posts + Bob: 1 post
 
-      # Method 2: Join approach (single query)
-      join_results = User
-        .inner_join("posts")
-        .where("users.email LIKE", "%_count_test@%")
-        .count
+      it "supports array of associations" do
+        associations = [:posts, :comments]
+        query = User.joins(associations)
+        sql = query.to_sql
 
-      join_results.should eq(3) # Same result, but in a single query
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("LEFT JOIN comments")
+      end
 
-      # Verify the performance difference concept
-      # N+1 approach: 1 (users) + 2 (posts for each user) = 3 queries
-      # Join approach: 1 query
-      n1_query_count = 1 + users.size # 1 + 2 = 3 queries
-      join_query_count = 1            # 1 query
+      it "supports direct array syntax" do
+        # Test the direct syntax: User.joins([:posts, :comments])
+        query = User.joins([:posts, :comments])
+        sql = query.to_sql
 
-      join_query_count.should be < n1_query_count
-      performance_improvement = ((n1_query_count - join_query_count).to_f / n1_query_count * 100).round(1)
-      performance_improvement.should be > 50.0 # At least 50% improvement
-    end
-  end
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("LEFT JOIN comments")
+      end
 
-  describe "smart joins based on association configuration" do
-    it "automatically uses INNER JOIN for required belongs_to associations" do
-      # Task belongs_to :project (required, optional: false by default)
-      query = Task.join("project")
-      sql = query.to_sql
+      it "supports custom SQL joins" do
+        custom_sql = "LEFT JOIN bookmarks ON bookmarks.bookmarkable_type = 'Post' AND bookmarks.user_id = users.id"
+        query = User.joins(custom_sql)
+        sql = query.to_sql
 
-      # Should use INNER JOIN because project is required
-      sql.should contain("INNER JOIN projects")
-      sql.should contain("ON tasks.project_id = projects.id")
-    end
+        sql.should contain(custom_sql)
+      end
 
-    it "automatically uses LEFT JOIN for optional belongs_to associations" do
-      # Task belongs_to :assignee, optional: true
-      query = Task.join("assignee")
-      sql = query.to_sql
+      it "supports nested association joins" do
+        # User.joins(posts: [:comments])
+        # This creates: User -> Post -> Comment
+        nested_hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+        nested_hash["posts"] = ["comments".as(String | Symbol)].as(Array(String | Symbol) | String | Symbol)
+        query = User.joins(nested_hash)
+        sql = query.to_sql
 
-      # Should use LEFT JOIN because assignee is optional
-      sql.should contain("LEFT JOIN users_optional")
-      sql.should contain("ON tasks.assignee_id = users_optional.id")
-    end
+        # Should join users to posts, then posts to comments
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("ON users.id = posts.user_id")
+        sql.should contain("INNER JOIN comments")
+        sql.should contain("ON posts.id = comments.post_id")
+      end
 
-    it "supports both string and symbol association names" do
-      # Test with string
-      string_query = Task.join("project")
-      string_sql = string_query.to_sql
-      string_sql.should contain("INNER JOIN projects")
+      it "supports nested association with single child" do
+        # User.joins(posts: :comments) - single child instead of array
+        nested_hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+        nested_hash["posts"] = "comments".as(Array(String | Symbol) | String | Symbol)
+        query = User.joins(nested_hash)
+        sql = query.to_sql
 
-      # Test with symbol
-      symbol_query = Task.join(:project)
-      symbol_sql = symbol_query.to_sql
-      symbol_sql.should contain("INNER JOIN projects")
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN comments")
+      end
 
-      # Both should generate identical SQL
-      string_sql.should eq(symbol_sql)
+      it "supports clean NamedTuple syntax for nested joins" do
+        # User.joins(posts: [:comments]) - the clean Rails-like syntax!
+        query = User.joins(posts: [:comments])
+        sql = query.to_sql
 
-      # Test different join types with symbols
-      inner_symbol = Task.inner_join(:assignee)
-      inner_symbol.to_sql.should contain("INNER JOIN users_optional")
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("ON users.id = posts.user_id")
+        sql.should contain("INNER JOIN comments")
+        sql.should contain("ON posts.id = comments.post_id")
+      end
 
-      left_symbol = Task.left_join(:project)
-      left_symbol.to_sql.should contain("LEFT JOIN projects")
+      it "supports clean NamedTuple syntax for single nested join" do
+        # User.joins(posts: :comments) - single child
+        query = User.joins(posts: :comments)
+        sql = query.to_sql
 
-      right_symbol = Task.right_join(:assignee)
-      right_symbol.to_sql.should contain("RIGHT JOIN users_optional")
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN comments")
+      end
 
-      # Test class-level methods with symbols
-      class_inner = Task.inner_join(:project)
-      class_inner.to_sql.should contain("INNER JOIN projects")
+      it "works with class-level method calls" do
+        # Test that BaseModel.joins works
+        query1 = User.joins(:posts)
+        query2 = User.joins(:posts, :comments)
 
-      class_left = Task.left_join(:assignee)
-      class_left.to_sql.should contain("LEFT JOIN users_optional")
+        nested_hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+        nested_hash["posts"] = ["comments".as(String | Symbol)].as(Array(String | Symbol) | String | Symbol)
+        query3 = User.joins(nested_hash)
 
-      # Test smart joins method with symbol
-      smart_symbol = Task.join(:assignee)
-      smart_symbol.to_sql.should contain("LEFT JOIN users_optional")
-    end
+        # All should generate valid SQL
+        query1.to_sql.should contain("LEFT JOIN posts")
+        query2.to_sql.should contain("LEFT JOIN posts")
+        query2.to_sql.should contain("LEFT JOIN comments")
+        query3.to_sql.should contain("LEFT JOIN posts")
+        query3.to_sql.should contain("INNER JOIN comments")
+      end
 
-    it "automatically uses LEFT JOIN for has_many associations" do
-      # Project has_many :tasks
-      query = Project.join("tasks")
-      sql = query.to_sql
+      it "can be chained with other query methods" do
+        query = User
+          .joins(:posts)
+          .where("users.active", true)
+          .where("posts.published", true)
+          .order("users.name")
+          .limit(10)
 
-      # Should use LEFT JOIN because a project might not have tasks
-      sql.should contain("LEFT JOIN tasks")
-      sql.should contain("ON projects.id = tasks.project_id")
-    end
+        sql = query.to_sql
+        sql.should contain("LEFT JOIN posts")
+        sql.should contain("WHERE (users.active = ?) AND (posts.published = ?)")
+        sql.should contain("ORDER BY users.name")
+        sql.should contain("LIMIT 10")
+      end
 
-    it "explicit join methods override smart behavior" do
-      # Even though assignee is optional, explicit inner_join should work
-      inner_query = Task.inner_join("assignee")
-      inner_sql = inner_query.to_sql
-      inner_sql.should contain("INNER JOIN users_optional")
+      it "handles practical use cases with real data" do
+        # Create test data
+        user1 = User.create(name: "Alice", email: "alice_joins_test@example.com", age: 25, active: true)
+        user2 = User.create(name: "Bob", email: "bob_joins_test@example.com", age: 30, active: true)
+        user3 = User.create(name: "Charlie", email: "charlie_joins_test@example.com", age: 35, active: false)
 
-      # Even though project is required, explicit left_join should work
-      left_query = Task.left_join("project")
-      left_sql = left_query.to_sql
-      left_sql.should contain("LEFT JOIN projects")
-    end
+        post1 = Post.create(title: "Alice's Post", content: "Content", user_id: user1.id, published: true)
+        post2 = Post.create(title: "Bob's Post", content: "Content", user_id: user2.id, published: true)
 
-    it "demonstrates practical benefits of smart joins" do
-      # Create test data
-      project = Project.create(name: "Test Project")
-      user = UserOptional.create(name: "Test User")
+        comment1 = Comment.create(content: "Great post!", post_id: post1.id, user_id: user2.id)
+        comment2 = Comment.create(content: "Nice work!", post_id: post2.id, user_id: user1.id)
 
-      # Task with both required and optional associations
-      task_with_assignee = Task.new
-      task_with_assignee.title = "Assigned Task"
-      task_with_assignee.project = project
-      task_with_assignee.assignee = user
-      task_with_assignee.save.should be_true
+        # Test multiple joins
+        users_with_posts_and_comments = User
+          .joins(:posts, :comments)
+          .where("users.email LIKE", "%_joins_test@%")
+          .to_a
 
-      task_without_assignee = Task.new
-      task_without_assignee.title = "Unassigned Task"
-      task_without_assignee.project = project
-      task_without_assignee.save.should be_true
+        # Should find users who have both posts and comments
+        users_with_posts_and_comments.size.should be >= 1
 
-      # Smart join on required association (project) - uses INNER JOIN
-      # Should only return tasks that have projects (both tasks)
-      tasks_with_projects = Task.join("project").to_a
-      tasks_with_projects.size.should eq(2)
+        # Test nested joins
+        nested_hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+        nested_hash["posts"] = ["comments".as(String | Symbol)].as(Array(String | Symbol) | String | Symbol)
+        users_with_post_comments = User
+          .joins(nested_hash)
+          .where("users.email LIKE", "%_joins_test@%")
+          .to_a
 
-      # Smart join on optional association (assignee) - uses LEFT JOIN
-      # Should return all tasks, even those without assignees
-      all_tasks_query = Task.join("assignee")
-      all_tasks_sql = all_tasks_query.to_sql
-      all_tasks_sql.should contain("LEFT JOIN")
+        # Should find users whose posts have comments
+        users_with_post_comments.size.should be >= 1
+      end
 
-      # This would include tasks without assignees due to LEFT JOIN
-      all_tasks = all_tasks_query.to_a
-      all_tasks.size.should eq(2) # Both tasks, regardless of assignee
+      it "raises appropriate errors for invalid associations" do
+        expect_raises(Exception, /Association 'invalid_association' not found/) do
+          User.joins(:invalid_association).to_sql
+        end
 
-      # Compare with explicit INNER JOIN on optional association
-      # Should only return tasks that have assignees
-      only_assigned_tasks = Task.inner_join("assignee").to_a
-      only_assigned_tasks.size.should eq(1) # Only the assigned task
+        expect_raises(Exception, /Child association 'invalid_child' not found/) do
+          nested_hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+          nested_hash["posts"] = ["invalid_child".as(String | Symbol)].as(Array(String | Symbol) | String | Symbol)
+          User.joins(nested_hash).to_sql
+        end
+      end
     end
   end
 

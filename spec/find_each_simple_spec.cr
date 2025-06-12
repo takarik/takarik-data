@@ -37,7 +37,7 @@ describe "find_each Method - Basic Tests" do
       yielded_count += 1
     end
 
-    yielded_count.should eq(1)  # Only the young user
+    yielded_count.should eq(1) # Only the young user
   end
 
   it "handles empty datasets" do
@@ -68,7 +68,7 @@ describe "find_each Method - Basic Tests" do
       yielded_count += 1
     end
 
-    yielded_count.should eq(2)  # Users 2 and 3
+    yielded_count.should eq(2) # Users 2 and 3
   end
 
   it "respects finish parameter" do
@@ -84,7 +84,7 @@ describe "find_each Method - Basic Tests" do
       yielded_count += 1
     end
 
-    yielded_count.should eq(2)  # Users 1 and 2
+    yielded_count.should eq(2) # Users 1 and 2
   end
 
   it "works with descending order" do
@@ -119,7 +119,7 @@ describe "find_each Method - Basic Tests" do
   end
 
   it "raises error when order present and error_on_ignore is true" do
-          expect_raises(ArgumentError, "Scoped order is ignored, use :cursor with :order to configure custom order.") do
+    expect_raises(ArgumentError, "Scoped order is ignored, use :cursor with :order to configure custom order.") do
       User.order(:name).find_each(error_on_ignore: true) { |user| }
     end
   end

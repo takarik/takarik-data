@@ -117,7 +117,7 @@ module Takarik::Data
     result
   end
 
-    # Helper method to execute and log queries within transactions with args array
+  # Helper method to execute and log queries within transactions with args array
   def self.exec_with_logging(connection : DB::Connection, sql : String, args : Array(DB::Any), model_name : String? = nil, operation : String? = nil)
     start_time = Time.monotonic
     result = connection.exec(sql, args: args)

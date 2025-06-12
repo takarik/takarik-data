@@ -28,7 +28,6 @@ end
 
 describe "Complete ActiveRecord Eager Loading Comparison" do
   it "should demonstrate all four approaches: N+1, includes, preload, eager_load" do
-
     # Create authors table
     Takarik::Data.connection.exec("DROP TABLE IF EXISTS authors_all")
     Takarik::Data.connection.exec(<<-SQL
@@ -75,8 +74,6 @@ describe "Complete ActiveRecord Eager Loading Comparison" do
       )
     end
 
-
-
     # 1. N+1 Problem demonstration
 
     books_n1 = BookAll.limit(10).to_a
@@ -107,11 +104,6 @@ describe "Complete ActiveRecord Eager Loading Comparison" do
     books_pre.all? { |book| book.author_all_loaded? }.should be_true
     books_eager.all? { |book| book.author_all_loaded? }.should be_true
 
-
     # Performance summary
-
-
-
-
   end
 end

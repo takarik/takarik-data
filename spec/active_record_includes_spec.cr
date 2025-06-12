@@ -30,7 +30,6 @@ describe "ActiveRecord Includes Specification Tests" do
 
   describe "13.2 includes - Basic Usage" do
     it "demonstrates the exact ActiveRecord pattern from the specification" do
-
       # Create test data exactly as in ActiveRecord docs
       rowling = AuthorSpec.create(first_name: "J.K.", last_name: "Rowling")
       king = AuthorSpec.create(first_name: "Stephen", last_name: "King")
@@ -56,20 +55,14 @@ describe "ActiveRecord Includes Specification Tests" do
         BookSpec.create(title: book_attrs[:title], author_id: book_attrs[:author_id])
       end
 
-
-
-
-
       # Test the includes approach
       books_with_includes = BookSpec.includes(:author).limit(10)
       sql = books_with_includes.to_sql
-
 
       # Execute and time the operation
       start_time = Time.utc
       books_loaded = books_with_includes.to_a
       end_time = Time.utc
-
 
       # Verify data integrity
       author_names = [] of String
@@ -87,14 +80,11 @@ describe "ActiveRecord Includes Specification Tests" do
       author_names.should contain("Rowling")
       author_names.should contain("King")
       author_names.should contain("Christie")
-
-
     end
   end
 
   describe "13.2.1 Eager Loading Multiple Associations" do
     it "supports array syntax: Customer.includes(:orders, :reviews)" do
-
       # This would require more complex models, but we can demonstrate with available models
 
       # Test what we can with current models
@@ -109,13 +99,11 @@ describe "ActiveRecord Includes Specification Tests" do
       test_author.should_not be_nil
       books = test_author.not_nil!.books.to_a
       books.size.should eq(3)
-
     end
   end
 
   describe "Performance comparison with exact measurement" do
     it "demonstrates measurable performance difference" do
-
       # Create substantial test data
       authors = [] of AuthorSpec
       5.times do |i|
@@ -127,8 +115,6 @@ describe "ActiveRecord Includes Specification Tests" do
         author = authors[i % authors.size]
         BookSpec.create(title: "Book #{i + 1}", author_id: author.id)
       end
-
-
 
       start_time = Time.utc
       books_n1 = BookSpec.limit(25).to_a
@@ -143,8 +129,6 @@ describe "ActiveRecord Includes Specification Tests" do
       end_time = Time.utc
       n1_time = (end_time - start_time).total_milliseconds
 
-
-
       start_time = Time.utc
       books_includes = BookSpec.includes(:author).limit(25).to_a
       author_names_includes = [] of String
@@ -158,7 +142,6 @@ describe "ActiveRecord Includes Specification Tests" do
       end_time = Time.utc
       includes_time = (end_time - start_time).total_milliseconds
 
-
       # Verify identical results
       books_n1.size.should eq(books_includes.size)
       author_names_n1.sort.should eq(author_names_includes.sort)
@@ -168,11 +151,9 @@ describe "ActiveRecord Includes Specification Tests" do
         improvement = ((n1_time - includes_time) / n1_time * 100).round(1)
         query_reduction = ((26 - 1) / 26.0 * 100).round(1)
 
-
         # Performance should be significantly better
         includes_time.should be < n1_time
       end
-
     end
   end
 end

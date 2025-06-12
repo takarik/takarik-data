@@ -25,7 +25,7 @@ describe "N+1 Query Problem Demonstration" do
         {title: "Murder on Orient Express", author_id: author3.id},
         {title: "And Then There Were None", author_id: author3.id},
         {title: "The ABC Murders", author_id: author3.id},
-        {title: "Death on the Nile", author_id: author3.id}
+        {title: "Death on the Nile", author_id: author3.id},
       ]
 
       books_data.each do |book_data|
@@ -38,16 +38,15 @@ describe "N+1 Query Problem Demonstration" do
       # 1. This query gets 10 books (1 query)
       books = BookString.limit(10).to_a
 
-             # 2. Each iteration will cause a separate query to get the author (N queries)
-       author_names = [] of String
-       books.each_with_index do |book, index|
-         author = book.author
-         if author
-           author_name = author.name
-           author_names << author_name.to_s if author_name
-         end
-       end
-
+      # 2. Each iteration will cause a separate query to get the author (N queries)
+      author_names = [] of String
+      books.each_with_index do |book, index|
+        author = book.author
+        if author
+          author_name = author.name
+          author_names << author_name.to_s if author_name
+        end
+      end
 
       # Verify we got all the data correctly
       author_names.size.should eq(10)
@@ -73,7 +72,6 @@ describe "N+1 Query Problem Demonstration" do
         end
       end
 
-
       # Using includes() to eager load the association
       books = BookString.limit(10).includes(:author).to_a
 
@@ -87,7 +85,6 @@ describe "N+1 Query Problem Demonstration" do
           author_names << author_name.to_s if author_name
         end
       end
-
 
       # Verify we got the same data
       author_names.size.should eq(10)
@@ -110,7 +107,6 @@ describe "N+1 Query Problem Demonstration" do
           BookString.create(title: "Book #{i + 1}", author_id: author.id)
         end
 
-
         # Verify both approaches work
         books_n_plus_one = BookString.limit(book_count).to_a
         books_n_plus_one.size.should eq(book_count)
@@ -127,7 +123,7 @@ describe "N+1 Query Problem Demonstration" do
       authors_data = [
         {name: "Author One", book_count: 2},
         {name: "Author Two", book_count: 3},
-        {name: "Author Three", book_count: 1}
+        {name: "Author Three", book_count: 1},
       ]
 
       authors_data.each do |author_data|
@@ -136,7 +132,6 @@ describe "N+1 Query Problem Demonstration" do
           BookString.create(title: "#{author_data[:name]} Book #{i + 1}", author_id: author.id)
         end
       end
-
 
       # Simulate the problematic code
       authors = AuthorString.all.to_a
@@ -147,7 +142,6 @@ describe "N+1 Query Problem Demonstration" do
         total_books += books.size
       end
 
-
       # Verify the data
       total_books.should eq(6) # 2 + 3 + 1 = 6 books total
       authors.size.should eq(3)
@@ -156,11 +150,10 @@ describe "N+1 Query Problem Demonstration" do
 
   describe "Real World Scenario" do
     it "simulates a book listing page with author information" do
-
       # Create realistic test data
       authors = [
         "J.K. Rowling", "Stephen King", "Agatha Christie",
-        "Isaac Asimov", "George Orwell"
+        "Isaac Asimov", "George Orwell",
       ].map { |name| AuthorString.create(name: name) }
 
       books_data = [
@@ -173,14 +166,12 @@ describe "N+1 Query Problem Demonstration" do
         {title: "Foundation", author: authors[3]},
         {title: "I, Robot", author: authors[3]},
         {title: "1984", author: authors[4]},
-        {title: "Animal Farm", author: authors[4]}
+        {title: "Animal Farm", author: authors[4]},
       ]
 
       books_data.each do |book_data|
         BookString.create(title: book_data[:title], author_id: book_data[:author].id)
       end
-
-
 
       # Test both approaches work correctly
       books_inefficient = BookString.limit(10).to_a
