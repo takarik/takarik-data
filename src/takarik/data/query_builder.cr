@@ -36,6 +36,7 @@ module Takarik::Data
     @preloads = [] of String
     @eager_loads = [] of String
     @lock_clause : String?
+    @strict_loading = false
 
     def initialize(@model_class : T.class)
     end
@@ -59,6 +60,7 @@ module Takarik::Data
       new_query.copy_preloads(@preloads.dup)
       new_query.copy_eager_loads(@eager_loads.dup)
       new_query.set_lock(@lock_clause)
+      new_query.set_strict_loading(@strict_loading)
       new_query
     end
 
@@ -830,6 +832,11 @@ module Takarik::Data
       self
     end
 
+    def set_strict_loading(strict_loading : Bool)
+      @strict_loading = strict_loading
+      self
+    end
+
     # Getter methods for debugging
     def order_clauses
       @order_clauses
@@ -1046,6 +1053,14 @@ module Takarik::Data
     def readonly
       new_query = dup
       new_query.set_readonly(true)
+      new_query
+    end
+
+    # Return a relation that enables strict loading to prevent N+1 queries
+    # When strict loading is enabled, accessing associations that weren't preloaded will raise an error
+    def strict_loading
+      new_query = dup
+      new_query.set_strict_loading(true)
       new_query
     end
 
@@ -1269,6 +1284,11 @@ module Takarik::Data
           # Mark instance as readonly if the query is readonly
           if @readonly
             instance.readonly!
+          end
+
+          # Mark instance as strict loading if the query has strict loading enabled
+          if @strict_loading
+            instance.strict_loading!
           end
 
           results << instance

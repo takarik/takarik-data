@@ -39,9 +39,12 @@ module Takarik::Data
     end
   end
 
-  # ========================================
-  # LOCKING CONFIGURATION
-  # ========================================
+  # Exception raised when strict loading is violated (accessing non-preloaded associations)
+  class StrictLoadingViolationError < Exception
+    def initialize(message : String = "Attempted to access association that was not preloaded")
+      super(message)
+    end
+  end
 
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
@@ -82,6 +85,7 @@ module Takarik::Data
     @association_cache = {} of String => (BaseModel | Nil)
     @loaded_associations = Set(String).new
     @readonly = false
+    @strict_loading = false
 
     # ========================================
     # CLASS METHODS - CONFIGURATION
@@ -510,6 +514,10 @@ module Takarik::Data
 
     def self.readonly
       query.readonly
+    end
+
+    def self.strict_loading
+      query.strict_loading
     end
 
     def self.having(condition : String)
@@ -2737,7 +2745,7 @@ module Takarik::Data
       {% begin %}
         case column_name
         {% for ivar in @type.instance_vars %}
-          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action", "association_cache", "loaded_associations", "readonly"] %}
+          {% excluded_vars = ["attributes", "persisted", "changed_attributes", "validation_errors", "_last_action", "association_cache", "loaded_associations", "readonly", "strict_loading"] %}
           {% unless excluded_vars.includes?(ivar.name.stringify) %}
             when {{ivar.name.stringify}}
               # Extract the type from the instance variable type and do direct assignment
@@ -2915,6 +2923,21 @@ module Takarik::Data
     # Mark this record as readonly
     def readonly!
       @readonly = true
+      self
+    end
+
+    # ========================================
+    # STRICT LOADING METHODS
+    # ========================================
+
+    # Check if this record has strict loading enabled
+    def strict_loading?
+      @strict_loading
+    end
+
+    # Mark this record as strict loading (prevents N+1 queries)
+    def strict_loading!
+      @strict_loading = true
       self
     end
   end

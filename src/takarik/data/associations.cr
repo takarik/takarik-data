@@ -309,6 +309,14 @@ module Takarik::Data
 
         # Define the getter method
         def {{name.id}}
+          # Check for strict loading violation
+          if @strict_loading && !association_loaded?({{name.id.stringify}})
+            raise Takarik::Data::StrictLoadingViolationError.new(
+              "#{self.class.name}#" + {{name.id.stringify}} + " is marked for strict_loading and cannot be lazily loaded. " \
+              "Use includes() or preload() to eager load this association."
+            )
+          end
+
           foreign_key_value = get_attribute({{foreign_key_str}})
           type_value = get_attribute({{type_column_str}})
 
@@ -321,6 +329,8 @@ module Takarik::Data
           return nil unless klass
 
           klass.find(foreign_key_value)
+        rescue ex : Takarik::Data::StrictLoadingViolationError
+          raise ex
         rescue
           nil
         end
@@ -414,6 +424,14 @@ module Takarik::Data
 
         # Define the getter method
         def {{name.id}} : {{class_type}}?
+          # Check for strict loading violation
+          if @strict_loading && !association_loaded?({{name.id.stringify}})
+            raise Takarik::Data::StrictLoadingViolationError.new(
+              "#{self.class.name}#" + {{name.id.stringify}} + " is marked for strict_loading and cannot be lazily loaded. " \
+              "Use includes() or preload() to eager load this association."
+            )
+          end
+
           cached = get_cached_association({{name.id.stringify}})
           return cached.as({{class_type}}?) if cached
 
@@ -423,6 +441,8 @@ module Takarik::Data
           record = {{class_type}}.find(foreign_key_value)
           cache_association({{name.id.stringify}}, record) if record
           record
+        rescue ex : Takarik::Data::StrictLoadingViolationError
+          raise ex
         rescue
           nil
         end
@@ -539,6 +559,14 @@ module Takarik::Data
 
         # Define the getter method
         def {{name.id}}
+          # Check for strict loading violation
+          if @strict_loading && !association_loaded?({{name.id.stringify}})
+            raise Takarik::Data::StrictLoadingViolationError.new(
+              "#{self.class.name}#" + {{name.id.stringify}} + " is marked for strict_loading and cannot be lazily loaded. " \
+              "Use includes() or preload() to eager load this association."
+            )
+          end
+
           primary_key_value = get_attribute({{primary_key_str}})
 
           unless primary_key_value
@@ -729,6 +757,14 @@ module Takarik::Data
 
         # Define the getter method
         def {{name.id}}
+          # Check for strict loading violation
+          if @strict_loading && !association_loaded?({{name.id.stringify}})
+            raise Takarik::Data::StrictLoadingViolationError.new(
+              "#{self.class.name}#" + {{name.id.stringify}} + " is marked for strict_loading and cannot be lazily loaded. " \
+              "Use includes() or preload() to eager load this association."
+            )
+          end
+
           primary_key_value = get_attribute({{primary_key_str}})
 
           unless primary_key_value
@@ -811,6 +847,14 @@ module Takarik::Data
 
       # Define the getter method
       def {{name.id}} : {{class_type}}?
+        # Check for strict loading violation
+        if @strict_loading && !association_loaded?({{name.id.stringify}})
+          raise Takarik::Data::StrictLoadingViolationError.new(
+            "#{self.class.name}#" + {{name.id.stringify}} + " is marked for strict_loading and cannot be lazily loaded. " \
+            "Use includes() or preload() to eager load this association."
+          )
+        end
+
         cached = get_cached_association({{name.id.stringify}})
         return cached.as({{class_type}}?) if cached
 
@@ -820,6 +864,8 @@ module Takarik::Data
         record = {{class_type}}.where({{foreign_key_str}}: primary_key_value).first?
         cache_association({{name.id.stringify}}, record) if record
         record
+      rescue ex : Takarik::Data::StrictLoadingViolationError
+        raise ex
       rescue
         nil
       end
