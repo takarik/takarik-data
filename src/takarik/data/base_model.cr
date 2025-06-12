@@ -181,6 +181,27 @@ module Takarik::Data
       QueryBuilder(self).new(self)
     end
 
+        # Remove all scoping and execute the given block in an unscoped context
+    # This is useful for temporarily bypassing default scopes
+    #
+    # Examples:
+    #   Book.unscoped { Book.out_of_print }  # Executes without default scope
+    #   User.unscoped { User.where(active: false) }  # Bypasses default scope
+    #
+    # The block is executed in the context of the unscoped model class
+    def self.unscoped(&block : -> QueryBuilder(self))
+      # Set a flag to bypass default scope during block execution
+      @@_unscoped_context = true
+      begin
+        yield
+      ensure
+        @@_unscoped_context = false
+      end
+    end
+
+    # Class variable to track unscoped context
+    @@_unscoped_context = false
+
     # Internal query method - users should use all() instead
     protected def self.query
       apply_default_scope_if_exists
@@ -2230,6 +2251,8 @@ module Takarik::Data
     macro default_scope(&block)
       # Override the apply_default_scope_if_exists method
       def self.apply_default_scope_if_exists
+        # If we're in an unscoped context, always return unscoped
+        return unscoped if @@_unscoped_context
         unscoped.{{block.body}}
       end
     end

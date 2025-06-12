@@ -1098,6 +1098,18 @@ module Takarik::Data
       new_query
     end
 
+    # Remove all scoping and return a fresh query builder
+    # This is useful for bypassing default scopes or removing all existing conditions
+    #
+    # Examples:
+    #   User.where(active: true).unscoped.all  # Removes the where condition
+    #   Book.unscoped.load                     # Bypasses any default scope
+    #
+    # This method removes all scoping and will do a normal query on the table
+    def unscoped
+      @model_class.unscoped
+    end
+
     # ========================================
     # LOCKING METHODS
     # ========================================
