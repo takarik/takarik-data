@@ -32,7 +32,6 @@ describe "Enhanced find_each Method (Latest Rails)" do
         finish: nil,
         batch_size: 1000,
         error_on_ignore: nil,
-        cursor: nil,
         order: :asc
       ) do |user|
         count += 1
@@ -59,12 +58,12 @@ describe "Enhanced find_each Method (Latest Rails)" do
       ages.sort.should eq([20, 25, 30])
     end
 
-    it "defaults to primary key when cursor is nil" do
+    it "defaults to primary key when cursor is not specified" do
       User.create(name: "User 1", email: "user1@example.com", age: 25)
       User.create(name: "User 2", email: "user2@example.com", age: 25)
 
       count = 0
-      User.find_each(cursor: nil) do |user|
+      User.find_each do |user|
         count += 1
       end
 

@@ -119,7 +119,7 @@ describe "find_each Method - Basic Tests" do
   end
 
   it "raises error when order present and error_on_ignore is true" do
-    expect_raises(ArgumentError, "Cannot use find_each with existing order") do
+          expect_raises(ArgumentError, "Scoped order is ignored, use :cursor with :order to configure custom order.") do
       User.order(:name).find_each(error_on_ignore: true) { |user| }
     end
   end

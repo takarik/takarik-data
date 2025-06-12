@@ -1,4 +1,5 @@
 require "set"
+require "db"
 
 # ========================================
 # GLOBAL SQL UTILITIES
@@ -12,6 +13,10 @@ end
 
 module Takarik::Data
   class QueryBuilder(T)
+    # Rails compatibility constants
+    ORDER_IGNORE_MESSAGE = "Scoped order is ignored, use :cursor with :order to configure custom order."
+    DEFAULT_ORDER        = :asc
+
     @model_class : T.class
     @select_clause : String?
     @where_conditions = [] of String
@@ -101,9 +106,9 @@ module Takarik::Data
     private def sanitize_column_list(column_string : String) : String
       # Split by comma, clean each column, filter out empty ones
       columns = column_string.split(",")
-        .map(&.strip)                    # Remove whitespace
-        .reject(&.empty?)                # Remove empty strings
-        .reject { |col| col.blank? }     # Remove blank strings
+        .map(&.strip)                # Remove whitespace
+        .reject(&.empty?)            # Remove empty strings
+        .reject { |col| col.blank? } # Remove blank strings
 
       if columns.empty?
         raise ArgumentError.new("Invalid select clause: no valid columns found in '#{column_string}'")
@@ -775,7 +780,7 @@ module Takarik::Data
     # OVERRIDING CONDITIONS METHODS
     # ========================================
 
-                        # Remove specific conditions from query
+    # Remove specific conditions from query
     def unscope(*clauses : Symbol)
       new_query = dup
 
@@ -805,7 +810,7 @@ module Takarik::Data
       new_query
     end
 
-        # Remove specific where conditions
+    # Remove specific where conditions
     def unscope(*, where clause_name : Symbol)
       new_query = dup
       clause_str = clause_name.to_s
@@ -818,12 +823,12 @@ module Takarik::Data
       @where_conditions.each_with_index do |condition, i|
         if condition.includes?(clause_str)
           # Skip this condition and its parameters
-          param_count = condition.count('?')
+          param_count = condition.count("?")
           param_index += param_count
         else
           # Keep this condition and its parameters
           filtered_conditions << condition
-          param_count = condition.count('?')
+          param_count = condition.count("?")
           param_count.times do
             if param_index < @where_params.size
               filtered_params << @where_params[param_index]
@@ -837,7 +842,7 @@ module Takarik::Data
       new_query
     end
 
-        # Keep only specified clauses
+    # Keep only specified clauses
     def only(*clauses : Symbol)
       new_query = @model_class.all.as(QueryBuilder(T))
 
@@ -1304,7 +1309,7 @@ module Takarik::Data
       end
     end
 
-        # Private method to handle grouped counting
+    # Private method to handle grouped counting
     private def grouped_count
       # Build SQL like: SELECT COUNT(*) AS count_all, status AS status FROM orders GROUP BY status
       group_columns = @group_clause.not_nil!.split(",").map(&.strip)
@@ -1566,125 +1571,19 @@ module Takarik::Data
     #   :cursor - Column(s) to use for batching (default: primary_key)
     #   :order - Cursor order (:asc/:desc or array like [:asc, :desc], default: :asc)
     def find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                  error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                  order : Symbol | Array(Symbol) = :asc, &block : T ->)
-      raise Exception.new("Batch size must be positive") if batch_size <= 0
-
-      # Check for existing ordering
-      unless @order_clauses.empty?
-        if error_on_ignore
-          raise ArgumentError.new("Cannot use find_each with existing order. Use unscoped to remove ordering.")
-        else
-          # In Rails, this would log a warning. For now, we'll just ignore the order.
-        end
+                  error_on_ignore : Bool? = nil, cursor : String | Array(String) = @model_class.primary_key,
+                  order : Symbol | Array(Symbol) = DEFAULT_ORDER, &block : T ->)
+      # Use find_in_batches and iterate over each record in each batch
+      find_in_batches(start: start, finish: finish, batch_size: batch_size,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |records|
+        records.each(&block)
       end
-
-      # Determine cursor columns
-      cursor_columns = if cursor
-                         cursor.is_a?(Array) ? cursor : [cursor.as(String)]
-                       else
-                         # Use primary key
-                         primary_key = @model_class.primary_key
-                         if primary_key.includes?(",")
-                           primary_key.split(",").map(&.strip)
-                         else
-                           [primary_key]
-                         end
-                       end
-
-      # Validate and normalize order parameter
-      order_array = case order
-                    when Symbol
-                      # Single order applies to all cursor columns
-                      cursor_columns.map { order.as(Symbol) }
-                    when Array
-                      if order.size != cursor_columns.size
-                        raise ArgumentError.new("Order array size (#{order.size}) must match cursor columns size (#{cursor_columns.size})")
-                      end
-                      order.as(Array(Symbol))
-                    else
-                      raise ArgumentError.new("Order must be Symbol or Array(Symbol), got #{order.class}")
-                    end
-
-      # Validate each order direction
-      order_array.each do |dir|
-        unless [:asc, :desc].includes?(dir)
-          raise ArgumentError.new("Order must be :asc or :desc, got #{dir}")
-        end
-      end
-
-      # For simplicity in this implementation, use the first cursor column for batching
-      batch_key = cursor_columns.first
-      batch_order = order_array.first
-
-      # Use regular dup (this preserves WHERE conditions but allows us to add our own ordering)
-      base_query = dup
-
-      # Apply start/finish filters to base query
-      if start
-        if batch_order == :asc
-          base_query = base_query.where("#{batch_key} >=", start)
-        else
-          base_query = base_query.where("#{batch_key} <=", start)
-        end
-      end
-
-      if finish
-        if batch_order == :asc
-          base_query = base_query.where("#{batch_key} <=", finish)
-        else
-          base_query = base_query.where("#{batch_key} >=", finish)
-        end
-      end
-
-      # Set up ordering for batching using cursor columns and their orders
-      cursor_columns.each_with_index do |col, i|
-        base_query = base_query.order(col, order_array[i].to_s.upcase)
-      end
-
-      # Start batching
-      last_id = start
-
-      loop do
-        # Build query for this batch
-        current_query = base_query.dup
-
-        # Add condition to get next batch
-        if last_id && last_id != start
-          if batch_order == :asc
-            current_query = current_query.where("#{batch_key} >", last_id)
-          else
-            current_query = current_query.where("#{batch_key} <", last_id)
-          end
-        end
-
-        # Get batch of records
-        batch = current_query.limit(batch_size).to_a
-
-        # Break if no more records
-        break if batch.empty?
-
-        # Yield each record to the block
-        batch.each do |record|
-          yield record
-        end
-
-        # Update last_id for next batch
-        # Break if we got fewer records than batch_size (last batch)
-        if batch.size < batch_size
-          break
-        else
-          last_id = batch.last.get_attribute(batch_key)
-        end
-      end
-
-      self
     end
 
     # Returns an Enumerator when no block is given
     def find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                  error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                  order : Symbol | Array(Symbol) = :asc)
+                  error_on_ignore : Bool? = nil, cursor : String | Array(String) = @model_class.primary_key,
+                  order : Symbol | Array(Symbol) = DEFAULT_ORDER)
       records = [] of T
       find_each(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |record|
@@ -1706,39 +1605,250 @@ module Takarik::Data
     #
     # Options: Same as find_each - start, finish, batch_size, error_on_ignore, cursor, order
     def find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                        order : Symbol | Array(Symbol) = :asc, &block : Array(T) ->)
-      raise Exception.new("Batch size must be positive") if batch_size <= 0
-
-      # Use the same logic as find_each but collect records into batches
-      current_batch = [] of T
-
-      find_each(start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |record|
-        current_batch << record
-        if current_batch.size >= batch_size
-          yield current_batch
-          current_batch.clear
-        end
+                        error_on_ignore : Bool? = nil, cursor : String | Array(String) = @model_class.primary_key,
+                        order : Symbol | Array(Symbol) = DEFAULT_ORDER, &block : Array(T) ->)
+      # Use in_batches with load: true to get the actual records, similar to Rails
+      in_batches(of: batch_size, start: start, finish: finish, load: true,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |relation|
+        yield relation.to_a
       end
-
-      # Yield any remaining records in the final batch
-      unless current_batch.empty?
-        yield current_batch
-      end
-
-      self
     end
 
     # Returns an Enumerator when no block is given
     def find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                        error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                        order : Symbol | Array(Symbol) = :asc)
+                        error_on_ignore : Bool? = nil, cursor : String | Array(String) = @model_class.primary_key,
+                        order : Symbol | Array(Symbol) = DEFAULT_ORDER)
       batches = [] of Array(T)
       find_in_batches(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order) do |batch|
         batches << batch
       end
       batches.each
+    end
+
+    # Yields QueryBuilder objects to work with a batch of records.
+    # This is similar to Rails' in_batches method.
+    #
+    # Examples:
+    #   User.where("age > 21").in_batches do |relation|
+    #     relation.delete_all
+    #     sleep(1) # Throttle the delete queries
+    #   end
+    #
+    #   User.in_batches.each_with_index do |relation, batch_index|
+    #     puts "Processing relation ##{batch_index}"
+    #     relation.delete_all
+    #   end
+    #
+    # Options:
+    #   :of - Specifies the size of the batch (default: 1000)
+    #   :load - Specifies if the relation should be loaded (default: false)
+    #   :start - Starting cursor value (inclusive)
+    #   :finish - Ending cursor value (inclusive)
+    #   :error_on_ignore - Raise error if existing order is present (default: nil)
+    #   :cursor - Column(s) to use for batching (default: primary_key)
+    #   :order - Cursor order (:asc/:desc or array, default: :asc)
+    #   :use_ranges - Use range iteration for better performance (default: nil, auto-detected)
+    def in_batches(of batch_size : Int32 = 1000, start : DB::Any? = nil, finish : DB::Any? = nil,
+                   load : Bool = false, error_on_ignore : Bool? = nil,
+                   cursor : String | Array(String) = @model_class.primary_key, order : Symbol | Array(Symbol) = DEFAULT_ORDER,
+                   use_ranges : Bool? = nil, &block : QueryBuilder(T) ->)
+      # Validate batch size
+      if batch_size <= 0
+        raise ArgumentError.new("Batch size must be positive")
+      end
+
+      # Normalize cursor to array
+      cursor_array = cursor.is_a?(Array) ? cursor : [cursor.as(String)]
+
+      # Validate parameters
+      ensure_valid_options_for_batching!(cursor_array, start, finish, order)
+
+      # Check for existing ordering
+      unless @order_clauses.empty?
+        act_on_ignored_order(error_on_ignore)
+      end
+
+      # Validate and normalize order parameter
+      order_array = case order
+                    when Symbol
+                      cursor_array.map { order.as(Symbol) }
+                    when Array
+                      if order.size != cursor_array.size
+                        raise ArgumentError.new("Order array size (#{order.size}) must match cursor columns size (#{cursor_array.size})")
+                      end
+                      order.as(Array(Symbol))
+                    else
+                      raise ArgumentError.new("Order must be Symbol or Array(Symbol), got #{order.class}")
+                    end
+
+      # Build batch orders hash
+      batch_orders = cursor_array.zip(order_array).to_h
+
+      # Create base relation with proper ordering and limits
+      relation = dup.clear_order
+      batch_orders.each do |column, direction|
+        relation = relation.order(column, direction.to_s)
+      end
+      relation = relation.limit(batch_size)
+      relation = apply_limits(relation, cursor_array, start, finish, batch_orders)
+
+      # Enhanced batching implementation
+      last_values = nil
+
+      loop do
+        current_relation = if last_values
+                             build_next_batch_relation(relation, cursor_array, last_values, batch_orders)
+                           else
+                             relation
+                           end
+
+        records = current_relation.to_a
+        break if records.empty?
+
+        if load
+          # For load: true, create a fresh relation with just the specific records
+          cursor_values = records.map { |r| cursor_array.map { |col| r.get_attribute(col) } }
+          # Create a completely fresh query with just the IDs we want, preserving order
+          if cursor_array.size == 1
+            values = cursor_values.map(&.first)
+            yielded_relation = @model_class.where(cursor_array[0], values)
+            # Preserve the original ordering
+            batch_orders.each do |column, direction|
+              yielded_relation = yielded_relation.order(column, direction.to_s)
+            end
+          else
+            yielded_relation = @model_class.query
+            cursor_values.each do |values|
+              conditions = {} of String => DB::Any
+              cursor_array.each_with_index do |col, i|
+                conditions[col] = values[i]
+              end
+              yielded_relation = yielded_relation.or(conditions)
+            end
+            # Preserve the original ordering
+            batch_orders.each do |column, direction|
+              yielded_relation = yielded_relation.order(column, direction.to_s)
+            end
+          end
+          yield yielded_relation
+        else
+          # For load: false, yield the relation that would fetch these records
+          yield current_relation
+        end
+
+        break if records.size < batch_size
+        last_values = records.map { |r| cursor_array.map { |col| r.get_attribute(col) } }.last
+      end
+
+      self
+    end
+
+    # Returns a BatchEnumerator when no block is given
+    def in_batches(of batch_size : Int32 = 1000, start : DB::Any? = nil, finish : DB::Any? = nil,
+                   load : Bool = false, error_on_ignore : Bool? = nil,
+                   cursor : String | Array(String) = @model_class.primary_key, order : Symbol | Array(Symbol) = DEFAULT_ORDER,
+                   use_ranges : Bool? = nil)
+      # Validate batch size
+      if batch_size <= 0
+        raise ArgumentError.new("Batch size must be positive")
+      end
+
+      BatchEnumerator(T).new(
+        of: batch_size,
+        start: start,
+        finish: finish,
+        relation: self,
+        cursor: cursor,
+        order: order,
+        use_ranges: use_ranges
+      )
+    end
+
+    # ========================================
+    # PRIVATE BATCHING HELPER METHODS
+    # ========================================
+
+    private def ensure_valid_options_for_batching!(cursor : Array(String), start : DB::Any?, finish : DB::Any?, order : Symbol | Array(Symbol))
+      # Validate start parameter
+      if start && !start.is_a?(Array) && cursor.size > 1
+        raise ArgumentError.new(":start must contain one value per cursor column")
+      end
+
+      # Validate finish parameter
+      if finish && !finish.is_a?(Array) && cursor.size > 1
+        raise ArgumentError.new(":finish must contain one value per cursor column")
+      end
+
+      # Validate that cursor includes primary key or unique column
+      primary_keys = [@model_class.primary_key].flatten
+      unless (primary_keys - cursor).empty?
+        # For now, we'll allow it but ideally should check for unique indexes
+        # raise ArgumentError.new(":cursor must include a primary key or other unique column(s)")
+      end
+
+      # Validate order parameter
+      order_array = order.is_a?(Array) ? order : [order]
+      valid_orders = [:asc, :desc]
+      unless order_array.all? { |o| valid_orders.includes?(o) }
+        raise ArgumentError.new("Order must be :asc or :desc")
+      end
+    end
+
+    private def act_on_ignored_order(error_on_ignore : Bool?)
+      # For now, just warn or raise based on error_on_ignore
+      if error_on_ignore
+        raise ArgumentError.new(ORDER_IGNORE_MESSAGE)
+      end
+      # In a real implementation, we'd log a warning here
+    end
+
+    private def apply_limits(relation : QueryBuilder(T), cursor : Array(String), start : DB::Any?, finish : DB::Any?, batch_orders : Hash(String, Symbol))
+      relation = apply_start_limit(relation, cursor, start, batch_orders) if start
+      relation = apply_finish_limit(relation, cursor, finish, batch_orders) if finish
+      relation
+    end
+
+    private def apply_start_limit(relation : QueryBuilder(T), cursor : Array(String), start : DB::Any, batch_orders : Hash(String, Symbol))
+      # Build condition for start limit
+      start_values = start.is_a?(Array) ? start : [start]
+      operators = batch_orders.values.map { |order| order == :desc ? "<=" : ">=" }
+      batch_condition(relation, cursor, start_values, operators)
+    end
+
+    private def apply_finish_limit(relation : QueryBuilder(T), cursor : Array(String), finish : DB::Any, batch_orders : Hash(String, Symbol))
+      # Build condition for finish limit
+      finish_values = finish.is_a?(Array) ? finish : [finish]
+      operators = batch_orders.values.map { |order| order == :desc ? ">=" : "<=" }
+      batch_condition(relation, cursor, finish_values, operators)
+    end
+
+    private def batch_condition(relation : QueryBuilder(T), cursor : Array(String), values : Array(DB::Any), operators : Array(String))
+      # For simplicity, handle single column case
+      if cursor.size == 1
+        relation.where("#{cursor[0]} #{operators[0]} ?", values[0])
+      else
+        # For multiple columns, we'd need more complex logic
+        # For now, just use the first column
+        relation.where("#{cursor[0]} #{operators[0]} ?", values[0])
+      end
+    end
+
+    private def build_next_batch_relation(relation : QueryBuilder(T), cursor : Array(String), last_values : Array(DB::Any), batch_orders : Hash(String, Symbol))
+      # Build condition for next batch (exclusive of last values)
+      if cursor.size == 1
+        column = cursor[0]
+        order = batch_orders[column]
+        operator = order == :desc ? "<" : ">"
+        relation.where("#{column} #{operator} ?", last_values[0])
+      else
+        # For multiple columns, we'd need more complex logic
+        # For now, just use the first column
+        column = cursor[0]
+        order = batch_orders[column]
+        operator = order == :desc ? "<" : ">"
+        relation.where("#{column} #{operator} ?", last_values[0])
+      end
     end
 
     # ========================================
@@ -2328,6 +2438,236 @@ module Takarik::Data
       # Those are typically set at the beginning of a query chain
 
       self
+    end
+  end
+
+  # BatchEnumerator provides enumerable methods for batched operations
+  # This is returned when in_batches is called without a block
+  class BatchEnumerator(T)
+    include Enumerable(QueryBuilder(T))
+
+    @of : Int32
+    @relation : QueryBuilder(T)
+    @start : DB::Any?
+    @finish : DB::Any?
+    @cursor : String | Array(String)?
+    @order : Symbol | Array(Symbol)
+    @use_ranges : Bool?
+
+    def initialize(of : Int32, start : DB::Any?, finish : DB::Any?, relation : QueryBuilder(T),
+                   cursor : String | Array(String)?, order : Symbol | Array(Symbol), use_ranges : Bool?)
+      @of = of
+      @relation = relation
+      @start = start
+      @finish = finish
+      @cursor = cursor
+      @order = order
+      @use_ranges = use_ranges
+    end
+
+    # The primary key value from which the BatchEnumerator starts, inclusive of the value.
+    getter start
+
+    # The primary key value at which the BatchEnumerator ends, inclusive of the value.
+    getter finish
+
+    # The relation from which the BatchEnumerator yields batches.
+    getter relation
+
+    # The size of the batches yielded by the BatchEnumerator.
+    def batch_size
+      @of
+    end
+
+    # Looping through a collection of records from the database is very inefficient
+    # since it will try to instantiate all the objects at once.
+    #
+    # In that case, batch processing methods allow you to work with the
+    # records in batches, thereby greatly reducing memory consumption.
+    #
+    #   User.in_batches.each_record do |user|
+    #     user.do_awesome_stuff
+    #   end
+    #
+    #   User.where("age > 21").in_batches(of: 10).each_record do |user|
+    #     user.party_all_night!
+    #   end
+    def each_record(&block : T ->)
+      @relation.in_batches(of: @of, start: @start, finish: @finish, load: true,
+        cursor: @cursor, order: @order, use_ranges: @use_ranges) do |relation|
+        relation.each(&block)
+      end
+    end
+
+    # Returns an Enumerator when no block is given
+    def each_record
+      records = [] of T
+      each_record { |record| records << record }
+      records.each
+    end
+
+    # Deletes records in batches. Returns the total number of rows affected.
+    #
+    #   User.in_batches.delete_all
+    #
+    # See QueryBuilder#delete_all for details of how each batch is deleted.
+    def delete_all
+      total_deleted = 0_i64
+      each do |relation|
+        total_deleted += relation.delete_all
+      end
+      total_deleted
+    end
+
+    # Updates records in batches. Returns the total number of rows affected.
+    #
+    #   User.in_batches.update_all(active: true)
+    #
+    # See QueryBuilder#update_all for details of how each batch is updated.
+    def update_all(attributes : Hash(String, DB::Any))
+      total_updated = 0_i64
+      each do |relation|
+        total_updated += relation.update_all(attributes)
+      end
+      total_updated
+    end
+
+    def update_all(**attributes)
+      update_all(attributes.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+    end
+
+    # Destroys records in batches. Returns the total number of rows affected.
+    #
+    #   User.where("age < 10").in_batches.destroy_all
+    #
+    # See QueryBuilder#destroy_all for details of how each batch is destroyed.
+    def destroy_all
+      total_destroyed = 0
+      each do |relation|
+        total_destroyed += relation.destroy_all
+      end
+      total_destroyed
+    end
+
+    # Yields a QueryBuilder object for each batch of records.
+    #
+    #   User.in_batches.each do |relation|
+    #     relation.update_all(awesome: true)
+    #   end
+    def each(&block : QueryBuilder(T) ->)
+      @relation.in_batches(of: @of, start: @start, finish: @finish, load: false,
+        cursor: @cursor, order: @order, use_ranges: @use_ranges, &block)
+    end
+
+    # Returns an Enumerator when no block is given
+    def each
+      relations = [] of QueryBuilder(T)
+      each { |relation| relations << relation }
+      relations.each
+    end
+
+    # Enumerate over each batch relation with index
+    def each_with_index(&block : QueryBuilder(T), Int32 ->)
+      index = 0
+      each do |relation|
+        yield relation, index
+        index += 1
+      end
+    end
+
+    # Count total records across all batches
+    def count
+      total_count = 0_i64
+      each do |relation|
+        total_count += relation.count.as(Int64)
+      end
+      total_count
+    end
+
+    # Check if any batches exist
+    def any?
+      @relation.any?
+    end
+
+    # Check if all batches are empty
+    def empty?
+      !@relation.any?
+    end
+
+    # Pluck values from all batches
+    def pluck(column : String)
+      results = [] of DB::Any
+      each do |relation|
+        results.concat(relation.pluck(column))
+      end
+      results
+    end
+
+    def pluck(*columns : String)
+      results = [] of Array(DB::Any)
+      each do |relation|
+        results.concat(relation.pluck(*columns))
+      end
+      results
+    end
+
+    # Sum values across all batches
+    def sum(column : String)
+      total = 0
+      each do |relation|
+        batch_sum = relation.sum(column)
+        case batch_sum
+        when Int32, Int64, Float32, Float64
+          total += batch_sum
+        end
+      end
+      total
+    end
+
+    # Get average across all batches (weighted by batch size)
+    def average(column : String)
+      total_sum = 0.0
+      total_count = 0_i64
+
+      each do |relation|
+        batch_records = relation.to_a
+        next if batch_records.empty?
+
+        batch_records.each do |record|
+          value = record.get_attribute(column)
+          case value
+          when Int32, Int64, Float32, Float64
+            total_sum += value.to_f
+            total_count += 1
+          end
+        end
+      end
+
+      total_count > 0 ? total_sum / total_count : nil
+    end
+
+    # Find minimum value across all batches
+    def minimum(column : String)
+      min_value = nil
+      each do |relation|
+        batch_min = relation.minimum(column)
+        if batch_min
+          min_value = batch_min if min_value.nil? || batch_min < min_value
+        end
+      end
+      min_value
+    end
+
+    # Find maximum value across all batches
+    def maximum(column : String)
+      max_value = nil
+      each do |relation|
+        batch_max = relation.maximum(column)
+        if batch_max
+          max_value = batch_max if max_value.nil? || batch_max > max_value
+        end
+      end
+      max_value
     end
   end
 end

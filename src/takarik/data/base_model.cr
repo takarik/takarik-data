@@ -787,16 +787,16 @@ module Takarik::Data
     #   :cursor - Column(s) to use for batching (default: primary_key)
     #   :order - Cursor order (:asc/:desc or array like [:asc, :desc], default: :asc)
     def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                       error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                       order : Symbol | Array(Symbol) = :asc, &block : self ->)
+                       error_on_ignore : Bool? = nil, cursor : String | Array(String) = primary_key,
+                       order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER, &block : self ->)
       query.find_each(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
     end
 
     # Returns an Enumerator when no block is given
     def self.find_each(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                       error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                       order : Symbol | Array(Symbol) = :asc)
+                       error_on_ignore : Bool? = nil, cursor : String | Array(String) = primary_key,
+                       order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER)
       query.find_each(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order)
     end
@@ -812,18 +812,48 @@ module Takarik::Data
     #     batch.each { |customer| process_customer(customer) }
     #   end
     def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                             error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                             order : Symbol | Array(Symbol) = :asc, &block : Array(self) ->)
+                             error_on_ignore : Bool? = nil, cursor : String | Array(String) = primary_key,
+                             order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER, &block : Array(self) ->)
       query.find_in_batches(start: start, finish: finish, batch_size: batch_size,
         error_on_ignore: error_on_ignore, cursor: cursor, order: order, &block)
     end
 
-        # Returns an Enumerator when no block is given
+    # Returns an Enumerator when no block is given
     def self.find_in_batches(start : DB::Any? = nil, finish : DB::Any? = nil, batch_size : Int32 = 1000,
-                            error_on_ignore : Bool? = nil, cursor : String | Array(String)? = nil,
-                            order : Symbol | Array(Symbol) = :asc)
+                             error_on_ignore : Bool? = nil, cursor : String | Array(String) = primary_key,
+                             order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER)
       query.find_in_batches(start: start, finish: finish, batch_size: batch_size,
-                         error_on_ignore: error_on_ignore, cursor: cursor, order: order)
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order)
+    end
+
+    # Yields QueryBuilder objects to work with a batch of records.
+    # This is similar to Rails' in_batches method.
+    #
+    # Examples:
+    #   User.where("age > 21").in_batches do |relation|
+    #     relation.delete_all
+    #     sleep(1) # Throttle the delete queries
+    #   end
+    #
+    #   User.in_batches.each_with_index do |relation, batch_index|
+    #     puts "Processing relation ##{batch_index}"
+    #     relation.delete_all
+    #   end
+    def self.in_batches(of batch_size : Int32 = 1000, start : DB::Any? = nil, finish : DB::Any? = nil,
+                        load : Bool = false, error_on_ignore : Bool? = nil,
+                        cursor : String | Array(String) = primary_key, order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER,
+                        use_ranges : Bool? = nil, &block : Takarik::Data::QueryBuilder(self) ->)
+      query.in_batches(of: batch_size, start: start, finish: finish, load: load,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order, use_ranges: use_ranges, &block)
+    end
+
+    # Returns a BatchEnumerator when no block is given
+    def self.in_batches(of batch_size : Int32 = 1000, start : DB::Any? = nil, finish : DB::Any? = nil,
+                        load : Bool = false, error_on_ignore : Bool? = nil,
+                        cursor : String | Array(String) = primary_key, order : Symbol | Array(Symbol) = Takarik::Data::QueryBuilder::DEFAULT_ORDER,
+                        use_ranges : Bool? = nil)
+      query.in_batches(of: batch_size, start: start, finish: finish, load: load,
+        error_on_ignore: error_on_ignore, cursor: cursor, order: order, use_ranges: use_ranges)
     end
 
     # ========================================

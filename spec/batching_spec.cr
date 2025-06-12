@@ -58,6 +58,86 @@ describe "Complete Batching Methods (Rails API)" do
     end
   end
 
+  describe "in_batches (Rails-style)" do
+    it "yields QueryBuilder objects with block" do
+      batch_count = 0
+      total_records = 0
+
+      User.in_batches(of: 3) do |relation|
+        batch_count += 1
+        relation.should be_a(Takarik::Data::QueryBuilder(User))
+
+        # Each relation should have records
+        records = relation.to_a
+        total_records += records.size
+        records.size.should be <= 3
+      end
+
+      batch_count.should eq(4) # 10 users / 3 = 4 batches (3,3,3,1)
+      total_records.should eq(10)
+    end
+
+    it "returns BatchEnumerator without block" do
+      enumerator = User.in_batches(of: 4)
+      enumerator.should be_a(Takarik::Data::BatchEnumerator(User))
+
+      # Test that we can iterate over it
+      batch_count = 0
+      enumerator.each do |relation|
+        batch_count += 1
+        relation.should be_a(Takarik::Data::QueryBuilder(User))
+      end
+
+      batch_count.should eq(3) # 10 users / 4 = 3 batches (4,4,2)
+    end
+
+    it "works with query chaining" do
+      batch_count = 0
+
+      User.where(active: true).in_batches(of: 2) do |relation|
+        batch_count += 1
+        # All records in this batch should be active
+        records = relation.to_a
+        records.all?(&.active).should be_true
+      end
+
+      batch_count.should eq(3) # 5 active users / 2 = 3 batches
+    end
+
+    it "supports load parameter for preloading records" do
+      batch_count = 0
+
+      User.in_batches(of: 3, load: true) do |relation|
+        batch_count += 1
+        # With load: true, the relation should contain the actual records
+        records = relation.to_a
+        records.size.should be <= 3
+      end
+
+      batch_count.should eq(4)
+    end
+
+    it "handles empty result sets" do
+      User.where("age > ?", 100).in_batches(of: 5) do |relation|
+        # This block should never be called
+        fail "Should not yield any batches for empty result set"
+      end
+
+      # Should not raise any errors
+      true.should be_true
+    end
+
+    it "respects batch size parameter" do
+      batch_sizes = [] of Int32
+
+      User.in_batches(of: 2) do |relation|
+        batch_sizes << relation.to_a.size
+      end
+
+      batch_sizes.should eq([2, 2, 2, 2, 2]) # 10 users / 2 = 5 batches of 2
+    end
+  end
+
   describe "Integration with existing methods" do
     it "both batch methods work together" do
       find_each_count = 0
