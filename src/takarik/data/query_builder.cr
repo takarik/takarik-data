@@ -35,6 +35,7 @@ module Takarik::Data
     @includes = [] of String
     @preloads = [] of String
     @eager_loads = [] of String
+    @lock_clause : String?
 
     def initialize(@model_class : T.class)
     end
@@ -57,6 +58,7 @@ module Takarik::Data
       new_query.copy_includes(@includes.dup)
       new_query.copy_preloads(@preloads.dup)
       new_query.copy_eager_loads(@eager_loads.dup)
+      new_query.set_lock(@lock_clause)
       new_query
     end
 
@@ -767,6 +769,11 @@ module Takarik::Data
       self
     end
 
+    def set_lock(lock_clause : String?)
+      @lock_clause = lock_clause
+      self
+    end
+
     # Getter methods for debugging
     def order_clauses
       @order_clauses
@@ -987,6 +994,31 @@ module Takarik::Data
     end
 
     # ========================================
+    # LOCKING METHODS
+    # ========================================
+
+    # Adds a locking clause to the query for pessimistic locking.
+    # This is useful for preventing race conditions when updating records.
+    #
+    # Examples:
+    #   User.lock.first                           # SELECT * FROM users LIMIT 1 FOR UPDATE
+    #   User.lock("LOCK IN SHARE MODE").first     # SELECT * FROM users LIMIT 1 LOCK IN SHARE MODE
+    #   User.where(active: true).lock.to_a       # SELECT * FROM users WHERE active = 1 FOR UPDATE
+    #
+    # The lock is automatically released when the transaction completes.
+    # It's recommended to wrap locked queries in a transaction:
+    #
+    #   User.transaction do
+    #     user = User.lock.first
+    #     user.update(name: "New Name")
+    #   end
+    def lock(lock_type : String = "FOR UPDATE")
+      new_query = dup
+      new_query.set_lock(lock_type)
+      new_query
+    end
+
+    # ========================================
     # GROUP BY METHODS
     # ========================================
 
@@ -1128,9 +1160,7 @@ module Takarik::Data
       end
 
       # GROUP BY clause
-      if @group_clause
-        sql_parts << "GROUP BY #{@group_clause}"
-      end
+      sql_parts << "GROUP BY #{@group_clause}" if @group_clause
 
       # HAVING clause
       unless @having_conditions.empty?
@@ -1143,14 +1173,13 @@ module Takarik::Data
       end
 
       # LIMIT clause
-      if @limit_value
-        sql_parts << "LIMIT #{@limit_value}"
-      end
+      sql_parts << "LIMIT #{@limit_value}" if @limit_value
 
       # OFFSET clause
-      if @offset_value
-        sql_parts << "OFFSET #{@offset_value}"
-      end
+      sql_parts << "OFFSET #{@offset_value}" if @offset_value
+
+      # LOCK clause (for pessimistic locking)
+      sql_parts << @lock_clause.not_nil! if @lock_clause
 
       sql_parts.join(" ")
     end

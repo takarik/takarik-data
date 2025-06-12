@@ -32,6 +32,17 @@ module Takarik::Data
     end
   end
 
+  # Exception raised when optimistic locking fails
+  class StaleObjectError < Exception
+    def initialize(message : String = "Attempted to update a stale object")
+      super(message)
+    end
+  end
+
+  # ========================================
+  # LOCKING CONFIGURATION
+  # ========================================
+
   # Base class for all ORM models, providing ActiveRecord-like functionality
   # but designed specifically for Crystal language features
   abstract class BaseModel
@@ -50,6 +61,15 @@ module Takarik::Data
 
     # Class variable to store column names for each model
     @@column_names = {} of String => Array(String)
+
+    # Class variable to store locking column name for each model
+    @@locking_column = {} of String => String
+
+    # Class variable to store optimistic locking setting for each model
+    @@lock_optimistically = {} of String => Bool
+
+    # Global optimistic locking setting (default: true)
+    @@global_lock_optimistically = true
 
     # ========================================
     # INSTANCE VARIABLES
@@ -93,9 +113,60 @@ module Takarik::Data
       @@column_names[self.name]? || [] of String
     end
 
+    # ========================================
+    # CLASS METHODS - TRANSACTIONS
+    # ========================================
+
+    # Executes the given block within a database transaction.
+    # If an exception is raised within the block, the transaction is rolled back.
+    # Otherwise, the transaction is committed.
+    #
+    # Example:
+    #   User.transaction do
+    #     user = User.create(name: "John")
+    #     user.posts.create(title: "Hello World")
+    #   end
+    def self.transaction(&block)
+      connection.transaction(&block)
+    end
+
+    # Adds a locking clause to queries for pessimistic locking
+    def self.lock(lock_type : String = "FOR UPDATE")
+      all.lock(lock_type)
+    end
+
     def self.add_column_name(name : String)
       @@column_names[self.name] ||= [] of String
       @@column_names[self.name] << name unless @@column_names[self.name].includes?(name)
+    end
+
+    # ========================================
+    # CLASS METHODS - LOCKING CONFIGURATION
+    # ========================================
+
+    def self.locking_column
+      @@locking_column[self.name]? || "lock_version"
+    end
+
+    def self.locking_column=(column_name : String)
+      @@locking_column[self.name] = column_name
+    end
+
+    def self.lock_optimistically
+      @@lock_optimistically[self.name]? || @@global_lock_optimistically
+    end
+
+    def self.lock_optimistically=(value : Bool)
+      @@lock_optimistically[self.name] = value
+    end
+
+    # Global optimistic locking configuration
+    def self.global_lock_optimistically
+      @@global_lock_optimistically
+    end
+
+    def self.global_lock_optimistically=(value : Bool)
+      @@global_lock_optimistically = value
     end
 
     # ========================================
@@ -1299,6 +1370,45 @@ module Takarik::Data
     end
 
     # ========================================
+    # LOCKING METHODS
+    # ========================================
+
+    # Obtains a row lock on this record, reloads the attributes, and yields to the block.
+    # The lock is released when the block completes.
+    # This is useful for ensuring that only one process can modify a record at a time.
+    #
+    # Example:
+    #   book = Book.first
+    #   book.with_lock do
+    #     # This block is called within a transaction,
+    #     # book is already locked.
+    #     book.increment!(:views)
+    #   end
+    def with_lock(lock_type : String? = nil, &block)
+      return yield if new_record?
+
+      self.class.connection.transaction do |tx|
+        # Reload the record with a lock
+        id_value = get_attribute(self.class.primary_key)
+        lock_clause = lock_type || "FOR UPDATE"
+
+        sql = "SELECT * FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ? #{lock_clause}"
+
+        # Use the transaction connection directly
+        tx.connection.query(sql, [id_value]) do |rs|
+          if rs.move_next
+            load_from_result_set(rs)
+            @changed_attributes.clear
+          else
+            raise RecordNotFound.new("Couldn't find #{self.class.model_name} with '#{self.class.primary_key}'=#{id_value}")
+          end
+        end
+
+        yield
+      end
+    end
+
+    # ========================================
     # PRIVATE METHODS - PERSISTENCE
     # ========================================
 
@@ -1315,48 +1425,45 @@ module Takarik::Data
       placeholders = (["?"] * columns.size).join(", ")
       query = "INSERT INTO #{self.class.table_name} (#{columns.join(", ")}) VALUES (#{placeholders})"
 
+      # Check if we're already in a transaction by trying to get the current connection
+      # If we're in a transaction, use the existing connection, otherwise start a new transaction
       begin
-        self.class.connection.transaction do |tx|
-          result = Takarik::Data.exec_with_logging(tx.connection, query, @attributes.values.to_a, self.class.name, "Create")
+        # Try to execute without starting a new transaction first
+        result = Takarik::Data.exec_with_logging(self.class.connection, query, @attributes.values.to_a, self.class.name, "Create")
 
-          if result.rows_affected > 0
-            # Get the inserted ID if it's an auto-increment primary key and not already set
-            primary_key_name = self.class.primary_key
-            unless @attributes.has_key?(primary_key_name)
-              id_value = result.last_insert_id
-              @attributes[primary_key_name] = id_value.as(DB::Any)
-              # Also set the instance variable directly without going through set_attribute
-              # to avoid adding it to changed_attributes
-              set_single_instance_variable(primary_key_name, id_value.as(DB::Any))
-            end
-            @persisted = true
-            @changed_attributes.clear
-
-            # Set the action for callbacks
-            @_last_action = :create
-
-            # Run after_create callbacks (inside transaction)
-            run_after_create_callbacks
-
-            # Run after_save callbacks (inside transaction)
-            run_after_save_callbacks
-
-            # Transaction will commit automatically here
-          else
-            # Explicitly rollback the transaction
-            tx.rollback
-            @_last_action = :create
-            execute_rollback_callbacks(:create)
-            return false
+        if result.rows_affected > 0
+          # Get the inserted ID if it's an auto-increment primary key and not already set
+          primary_key_name = self.class.primary_key
+          unless @attributes.has_key?(primary_key_name)
+            id_value = result.last_insert_id
+            @attributes[primary_key_name] = id_value.as(DB::Any)
+            # Also set the instance variable directly without going through set_attribute
+            # to avoid adding it to changed_attributes
+            set_single_instance_variable(primary_key_name, id_value.as(DB::Any))
           end
-        end
+          @persisted = true
+          @changed_attributes.clear
 
-        # Transaction committed successfully - run after_commit callbacks
-        @_last_action = :create
-        execute_commit_callbacks(:create)
-        true
+          # Set the action for callbacks
+          @_last_action = :create
+
+          # Run after_create callbacks
+          run_after_create_callbacks
+
+          # Run after_save callbacks
+          run_after_save_callbacks
+
+          # Run after_commit callbacks
+          @_last_action = :create
+          execute_commit_callbacks(:create)
+          true
+        else
+          @_last_action = :create
+          execute_rollback_callbacks(:create)
+          false
+        end
       rescue ex
-        # Transaction was rolled back due to exception - run after_rollback callbacks
+        # Run after_rollback callbacks
         @_last_action = :create
         execute_rollback_callbacks(:create)
         raise ex
@@ -1372,45 +1479,80 @@ module Takarik::Data
       # Run before_update callbacks
       run_before_update_callbacks
 
-      set_clause = @changed_attributes.map { |attr| "#{attr} = ?" }.join(", ")
-      query = "UPDATE #{self.class.table_name} SET #{set_clause} WHERE #{self.class.primary_key} = ?"
+      # Handle optimistic locking
+      locking_column = self.class.locking_column
+      current_lock_version = nil
 
-      changed_values = @changed_attributes.map { |attr| @attributes[attr] }.to_a
+      if self.class.lock_optimistically && self.class.column_names.includes?(locking_column)
+        current_lock_version = get_attribute(locking_column)
+        # Increment the lock version
+        new_lock_version = case current_lock_version
+                           when Int32
+                             current_lock_version + 1
+                           when Int64
+                             current_lock_version + 1
+                           when Nil
+                             1
+                           else
+                             1
+                           end
+        set_attribute(locking_column, new_lock_version)
+        @changed_attributes.add(locking_column)
+      end
+
+      set_clause = @changed_attributes.map { |attr| "#{attr} = ?" }.join(", ")
+
+      # Build WHERE clause with optimistic locking check
+      where_clause = "#{self.class.primary_key} = ?"
+      args = @changed_attributes.map { |attr| @attributes[attr] }.to_a
       id_value = get_attribute(self.class.primary_key)
-      args = changed_values + [id_value]
+      args << id_value
+
+      if self.class.lock_optimistically && self.class.column_names.includes?(locking_column) && current_lock_version
+        where_clause += " AND #{locking_column} = ?"
+        args << current_lock_version
+      end
+
+      query = "UPDATE #{self.class.table_name} SET #{set_clause} WHERE #{where_clause}"
 
       begin
-        self.class.connection.transaction do |tx|
-          result = Takarik::Data.exec_with_logging(tx.connection, query, args, self.class.name, "Update")
+        result = Takarik::Data.exec_with_logging(self.class.connection, query, args, self.class.name, "Update")
 
-          if result.rows_affected > 0
-            @changed_attributes.clear
+        if result.rows_affected > 0
+          @changed_attributes.clear
 
-            # Set the action for callbacks
-            @_last_action = :update
+          # Set the action for callbacks
+          @_last_action = :update
 
-            # Run after_update callbacks (inside transaction)
-            run_after_update_callbacks
+          # Run after_update callbacks
+          run_after_update_callbacks
 
-            # Run after_save callbacks (inside transaction)
-            run_after_save_callbacks
+          # Run after_save callbacks
+          run_after_save_callbacks
 
-            # Transaction will commit automatically here
-          else
-            # Explicitly rollback the transaction
-            tx.rollback
+          # Run after_commit callbacks
+          @_last_action = :update
+          execute_commit_callbacks(:update)
+          true
+        else
+          # Check if this was an optimistic locking failure
+          if self.class.lock_optimistically && self.class.column_names.includes?(locking_column) && current_lock_version
+            # Rollback the lock version change
+            set_attribute(locking_column, current_lock_version)
+            @changed_attributes.delete(locking_column)
+
             @_last_action = :update
             execute_rollback_callbacks(:update)
-            return false
+
+            raise StaleObjectError.new("Attempted to update a stale object: #{self.class.name}")
+          else
+            @_last_action = :update
+            execute_rollback_callbacks(:update)
+            false
           end
         end
-
-        # Transaction committed successfully - run after_commit callbacks
-        @_last_action = :update
-        execute_commit_callbacks(:update)
-        true
       rescue ex
-        # Transaction was rolled back due to exception - run after_rollback callbacks
+        # Run after_rollback callbacks
         @_last_action = :update
         execute_rollback_callbacks(:update)
         raise ex
