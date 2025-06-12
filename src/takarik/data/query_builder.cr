@@ -129,6 +129,387 @@ module Takarik::Data
     end
 
     # ========================================
+    # EXPLAIN METHODS (moved early to avoid method_missing issues)
+    # ========================================
+
+    # Run EXPLAIN on the current relation to analyze query execution plan.
+    # EXPLAIN output varies for each database adapter.
+    #
+    # Examples:
+    #   Customer.where(id: 1).joins(:orders).explain
+    #   Customer.where(id: 1).includes(:orders).explain
+    #   User.where("age > 21").explain(:analyze, :verbose)  # PostgreSQL options
+    #   Order.joins(:customer).explain(:analyze)            # MySQL/MariaDB options
+    #
+    # For databases that support it (PostgreSQL, MySQL, MariaDB), you can pass options:
+    #   :analyze - Actually execute the query and show real execution statistics
+    #   :verbose - Show additional details about the query plan
+    #   :buffers - Show buffer usage information (PostgreSQL)
+    #   :costs   - Show cost estimates (PostgreSQL, default: true)
+    #   :format  - Output format: :text, :json, :xml, :yaml (PostgreSQL)
+    #
+    # The method executes the query when using includes() since eager loading
+    # may trigger multiple queries, and some queries need results from previous ones.
+    def explain
+      # Handle includes separately since they may execute multiple queries
+      if @includes.any?
+        explain_with_includes_impl
+      else
+        explain_single_query_impl
+      end
+    end
+
+    def explain(*options : Symbol)
+      # Handle includes separately since they may execute multiple queries
+      if @includes.any?
+        explain_with_includes_impl(*options)
+      else
+        explain_single_query_impl(*options)
+      end
+    end
+
+    # ========================================
+    # PRIVATE EXPLAIN IMPLEMENTATION METHODS
+    # ========================================
+
+    private def explain_single_query_impl(*options : Symbol)
+      adapter = detect_database_adapter
+      explain_sql = build_explain_sql(to_sql, adapter, *options)
+
+      output = String.build do |str|
+        str << explain_sql << "\n"
+
+        begin
+          Takarik::Data.query_with_logging(@model_class.connection, explain_sql, combined_params, @model_class.name, "EXPLAIN") do |rs|
+            case adapter
+            when :postgresql
+              format_postgresql_explain(rs, str, *options)
+            when :mysql, :mariadb
+              format_mysql_explain(rs, str, *options)
+            when :sqlite
+              format_sqlite_explain(rs, str)
+            else
+              # Generic format for unknown adapters
+              format_generic_explain(rs, str)
+            end
+          end
+        rescue ex
+          str << "-- Error executing EXPLAIN: #{ex.message}\n"
+          str << "-- The query would be: #{to_sql}\n"
+        end
+      end
+
+      output
+    end
+
+    private def explain_single_query_impl
+      # Call the version with options but pass no options
+      adapter = detect_database_adapter
+      explain_sql = build_explain_sql(to_sql, adapter)
+
+      output = String.build do |str|
+        str << explain_sql << "\n"
+
+        begin
+          Takarik::Data.query_with_logging(@model_class.connection, explain_sql, combined_params, @model_class.name, "EXPLAIN") do |rs|
+            case adapter
+            when :postgresql
+              format_postgresql_explain(rs, str)
+            when :mysql, :mariadb
+              format_mysql_explain(rs, str)
+            when :sqlite
+              format_sqlite_explain(rs, str)
+            else
+              # Generic format for unknown adapters
+              format_generic_explain(rs, str)
+            end
+          end
+        rescue ex
+          str << "-- Error executing EXPLAIN: #{ex.message}\n"
+          str << "-- The query would be: #{to_sql}\n"
+        end
+      end
+
+      output
+    end
+
+    private def explain_with_includes_impl(*options : Symbol)
+      adapter = detect_database_adapter
+      output = String.build do |str|
+
+        # Show explain for the main query first (avoid executing to_a which might fail)
+        main_sql = to_sql
+        explain_sql = build_explain_sql(main_sql, adapter, *options)
+        str << explain_sql << "\n"
+
+        begin
+          Takarik::Data.query_with_logging(@model_class.connection, explain_sql, combined_params, @model_class.name, "EXPLAIN") do |rs|
+            case adapter
+            when :postgresql
+              format_postgresql_explain(rs, str, *options)
+            when :mysql, :mariadb
+              format_mysql_explain(rs, str, *options)
+            when :sqlite
+              format_sqlite_explain(rs, str)
+            else
+              format_generic_explain(rs, str)
+            end
+          end
+        rescue ex
+          str << "-- Error executing EXPLAIN: #{ex.message}\n"
+          str << "-- The query would be: #{main_sql}\n"
+        end
+
+        # Show explain for each preload query that would be executed
+        # For includes, we simulate what the preload queries would look like
+        @includes.each do |association_name|
+          str << "\n"
+          explain_simulated_preload_query_with_options(association_name, str, adapter, *options)
+        end
+      end
+
+      output
+    end
+
+    private def explain_with_includes_impl
+      # Call the version with options but pass no options
+      adapter = detect_database_adapter
+      output = String.build do |str|
+
+        # Show explain for the main query first (avoid executing to_a which might fail)
+        main_sql = to_sql
+        explain_sql = build_explain_sql(main_sql, adapter)
+        str << explain_sql << "\n"
+
+        begin
+          Takarik::Data.query_with_logging(@model_class.connection, explain_sql, combined_params, @model_class.name, "EXPLAIN") do |rs|
+            case adapter
+            when :postgresql
+              format_postgresql_explain(rs, str)
+            when :mysql, :mariadb
+              format_mysql_explain(rs, str)
+            when :sqlite
+              format_sqlite_explain(rs, str)
+            else
+              format_generic_explain(rs, str)
+            end
+          end
+        rescue ex
+          str << "-- Error executing EXPLAIN: #{ex.message}\n"
+          str << "-- The query would be: #{main_sql}\n"
+        end
+
+        # Show explain for each preload query that would be executed
+        # For includes, we simulate what the preload queries would look like
+        @includes.each do |association_name|
+          str << "\n"
+          explain_simulated_preload_query(association_name, str, adapter)
+        end
+      end
+
+      output
+    end
+
+    # Helper methods for explain functionality
+    private def detect_database_adapter : Symbol
+      # For now, return a default adapter since we don't have access to the actual connection
+      # In a real implementation, this would inspect the connection type
+      :sqlite
+    end
+
+    private def build_explain_sql(sql : String, adapter : Symbol, *options : Symbol) : String
+      case adapter
+      when :postgresql
+        if options.any?
+          explain_options = options.map(&.to_s.upcase).join(", ")
+          "EXPLAIN (#{explain_options}) #{sql}"
+        else
+          "EXPLAIN #{sql}"
+        end
+      when :mysql, :mariadb
+        if options.includes?(:analyze)
+          "ANALYZE #{sql}"
+        else
+          "EXPLAIN #{sql}"
+        end
+      when :sqlite
+        if options.includes?(:query_plan)
+          "EXPLAIN QUERY PLAN #{sql}"
+        else
+          "EXPLAIN #{sql}"
+        end
+      else
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def build_explain_sql(sql : String, adapter : Symbol) : String
+      case adapter
+      when :postgresql
+        "EXPLAIN #{sql}"
+      when :mysql, :mariadb
+        "EXPLAIN #{sql}"
+      when :sqlite
+        "EXPLAIN #{sql}"
+      else
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def format_postgresql_explain(rs : DB::ResultSet, output : String::Builder, *options : Symbol)
+      while rs.move_next
+        plan_line = rs.read.to_s
+        output << plan_line << "\n"
+      end
+    end
+
+    private def format_postgresql_explain(rs : DB::ResultSet, output : String::Builder)
+      while rs.move_next
+        plan_line = rs.read.to_s
+        output << plan_line << "\n"
+      end
+    end
+
+    private def format_mysql_explain(rs : DB::ResultSet, output : String::Builder, *options : Symbol)
+      # MySQL/MariaDB EXPLAIN returns tabular data
+      column_names = rs.column_names
+      output << format_table_header(column_names)
+
+      while rs.move_next
+        row_values = [] of String
+        column_names.size.times do
+          value = rs.read
+          row_values << (value.nil? ? "NULL" : value.to_s)
+        end
+        output << format_table_row(row_values, column_names.map(&.size))
+      end
+    end
+
+    private def format_mysql_explain(rs : DB::ResultSet, output : String::Builder)
+      # MySQL/MariaDB EXPLAIN returns tabular data
+      column_names = rs.column_names
+      output << format_table_header(column_names)
+
+      while rs.move_next
+        row_values = [] of String
+        column_names.size.times do
+          value = rs.read
+          row_values << (value.nil? ? "NULL" : value.to_s)
+        end
+        output << format_table_row(row_values, column_names.map(&.size))
+      end
+    end
+
+    private def format_sqlite_explain(rs : DB::ResultSet, output : String::Builder)
+      column_names = rs.column_names
+
+      if column_names.includes?("detail")
+        # EXPLAIN QUERY PLAN format
+        while rs.move_next
+          detail = rs.read.to_s
+          output << detail << "\n"
+        end
+      else
+        # Regular EXPLAIN format (opcode listing)
+        output << format_table_header(column_names)
+
+        while rs.move_next
+          row_values = [] of String
+          column_names.size.times do
+            value = rs.read
+            row_values << (value.nil? ? "NULL" : value.to_s)
+          end
+          output << format_table_row(row_values, column_names.map(&.size))
+        end
+      end
+    end
+
+    private def format_generic_explain(rs : DB::ResultSet, output : String::Builder)
+      column_names = rs.column_names
+      output << format_table_header(column_names)
+
+      while rs.move_next
+        row_values = [] of String
+        column_names.size.times do
+          value = rs.read
+          row_values << (value.nil? ? "NULL" : value.to_s)
+        end
+        output << format_table_row(row_values, column_names.map(&.size))
+      end
+    end
+
+    private def format_table_header(column_names : Array(String)) : String
+      header = "+" + column_names.map { |name| "-" * (name.size + 2) }.join("+") + "+\n"
+      header += "|" + column_names.map { |name| " #{name} " }.join("|") + "|\n"
+      header += "+" + column_names.map { |name| "-" * (name.size + 2) }.join("+") + "+\n"
+      header
+    end
+
+    private def format_table_row(values : Array(String), column_widths : Array(Int32)) : String
+      row = "|"
+      values.each_with_index do |value, index|
+        width = column_widths[index] > value.size ? column_widths[index] : value.size
+        row += " #{value.ljust(width)} |"
+      end
+      row + "\n"
+    end
+
+    private def explain_preload_query_no_options(association_name : String, records : Array(T), output : String::Builder, adapter : Symbol)
+      # Simplified version without options for now
+      output << "-- Preload query for #{association_name} would be executed here\n"
+    end
+
+    private def explain_simulated_preload_query(association_name : String, output : String::Builder, adapter : Symbol)
+      # Simulate what a preload query would look like without actually executing the main query
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+      return unless association && association.class_type
+
+      case association.type
+      when .belongs_to?
+        # Simulate: SELECT * FROM associated_table WHERE primary_key IN (?)
+        preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.primary_key} IN (?)"
+      when .has_many?, .has_one?
+        # Simulate: SELECT * FROM associated_table WHERE foreign_key IN (?)
+        preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.foreign_key} IN (?)"
+      else
+        output << "-- Unknown association type for #{association_name}\n"
+        return
+      end
+
+      explain_sql = build_explain_sql(preload_sql, adapter)
+      output << explain_sql << "\n"
+
+      # For simulation, we don't actually execute the query, just show what it would be
+      output << "-- This query would be executed to preload #{association_name} association\n"
+    end
+
+    private def explain_simulated_preload_query_with_options(association_name : String, output : String::Builder, adapter : Symbol, *options : Symbol)
+      # Simulate what a preload query would look like without actually executing the main query
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+      return unless association && association.class_type
+
+      case association.type
+      when .belongs_to?
+        # Simulate: SELECT * FROM associated_table WHERE primary_key IN (?)
+        preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.primary_key} IN (?)"
+      when .has_many?, .has_one?
+        # Simulate: SELECT * FROM associated_table WHERE foreign_key IN (?)
+        preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.foreign_key} IN (?)"
+      else
+        output << "-- Unknown association type for #{association_name}\n"
+        return
+      end
+
+      explain_sql = build_explain_sql(preload_sql, adapter, *options)
+      output << explain_sql << "\n"
+
+      # For simulation, we don't actually execute the query, just show what it would be
+      output << "-- This query would be executed to preload #{association_name} association\n"
+    end
+
+    # ========================================
     # WHERE METHODS - SQL INJECTION SAFE
     # ========================================
     #
@@ -1913,6 +2294,257 @@ module Takarik::Data
       aggregate("MAX", column.to_s)
     end
 
+
+
+    # Test method to check if methods are being found
+    def test_method
+      "test method works"
+    end
+
+    private def explain_preload_query(association_name : String, records : Array(T), output : String::Builder, adapter : Symbol, *options : Symbol)
+      associations = @model_class.associations
+      association = associations.find { |a| a.name == association_name }
+      return unless association && association.class_type
+
+      case association.type
+      when .belongs_to?
+        explain_belongs_to_preload(association, records, output, adapter, *options)
+      when .has_many?
+        explain_has_many_preload(association, records, output, adapter, *options)
+      when .has_one?
+        explain_has_one_preload(association, records, output, adapter, *options)
+      end
+    end
+
+    private def explain_belongs_to_preload(association, records : Array(T), output : String::Builder, adapter : Symbol, *options : Symbol)
+      # Get foreign key values that would be used in the preload query
+      foreign_key_values = records.map { |record| record.get_attribute(association.foreign_key) }
+        .reject(&.nil?)
+        .uniq
+
+      return if foreign_key_values.empty?
+
+      # Build the preload query
+      placeholders = (["?"] * foreign_key_values.size).join(", ")
+      preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.primary_key} IN (#{placeholders})"
+      explain_sql = build_explain_sql(preload_sql, adapter, *options)
+
+      output << explain_sql << "\n"
+
+      Takarik::Data.query_with_logging(@model_class.connection, explain_sql, foreign_key_values, @model_class.name, "EXPLAIN") do |rs|
+        case adapter
+        when :postgresql
+          format_postgresql_explain(rs, output, *options)
+        when :mysql, :mariadb
+          format_mysql_explain(rs, output, *options)
+        when :sqlite
+          format_sqlite_explain(rs, output)
+        else
+          format_generic_explain(rs, output)
+        end
+      end
+    end
+
+    private def explain_has_many_preload(association, records : Array(T), output : String::Builder, adapter : Symbol, *options : Symbol)
+      # Get primary key values that would be used in the preload query
+      primary_key_values = records.map { |record| record.get_attribute(association.primary_key) }
+        .reject(&.nil?)
+        .uniq
+
+      return if primary_key_values.empty?
+
+      # Build the preload query
+      placeholders = (["?"] * primary_key_values.size).join(", ")
+      preload_sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.foreign_key} IN (#{placeholders})"
+      explain_sql = build_explain_sql(preload_sql, adapter, *options)
+
+      output << explain_sql << "\n"
+
+      Takarik::Data.query_with_logging(@model_class.connection, explain_sql, primary_key_values, @model_class.name, "EXPLAIN") do |rs|
+        case adapter
+        when :postgresql
+          format_postgresql_explain(rs, output, *options)
+        when :mysql, :mariadb
+          format_mysql_explain(rs, output, *options)
+        when :sqlite
+          format_sqlite_explain(rs, output)
+        else
+          format_generic_explain(rs, output)
+        end
+      end
+    end
+
+    private def explain_has_one_preload(association, records : Array(T), output : String::Builder, adapter : Symbol, *options : Symbol)
+      # Same as has_many for preloading
+      explain_has_many_preload(association, records, output, adapter, *options)
+    end
+
+    private def detect_database_adapter : Symbol
+      # Get the connection URI to detect the adapter
+      connection = @model_class.connection
+
+      # Try to detect from connection class name or URI
+      connection_class = connection.class.name
+
+      case connection_class
+      when .includes?("SQLite")
+        :sqlite
+      when .includes?("PostgreSQL"), .includes?("Postgres")
+        :postgresql
+      when .includes?("MySQL")
+        :mysql
+      when .includes?("MariaDB")
+        :mariadb
+      else
+        # Try to detect from connection URI if available
+        # This is a fallback method - in practice, you might want to store
+        # the adapter type when establishing the connection
+        :unknown
+      end
+    end
+
+    private def build_explain_sql(sql : String, adapter : Symbol, *options : Symbol) : String
+      case adapter
+      when :postgresql
+        build_postgresql_explain_sql(sql, *options)
+      when :mysql, :mariadb
+        build_mysql_explain_sql(sql, *options)
+      when :sqlite
+        build_sqlite_explain_sql(sql, *options)
+      else
+        # Generic EXPLAIN for unknown adapters
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def build_postgresql_explain_sql(sql : String, *options : Symbol) : String
+      explain_options = [] of String
+
+      options.each do |option|
+        case option
+        when :analyze
+          explain_options << "ANALYZE"
+        when :verbose
+          explain_options << "VERBOSE"
+        when :costs
+          explain_options << "COSTS"
+        when :buffers
+          explain_options << "BUFFERS"
+        when :format
+          # Default to TEXT format, could be extended to support other formats
+          explain_options << "FORMAT TEXT"
+        end
+      end
+
+      if explain_options.any?
+        "EXPLAIN (#{explain_options.join(", ")}) #{sql}"
+      else
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def build_mysql_explain_sql(sql : String, *options : Symbol) : String
+      if options.includes?(:analyze)
+        # MySQL 8.0+ and MariaDB support ANALYZE
+        "ANALYZE #{sql}"
+      else
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def build_sqlite_explain_sql(sql : String, *options : Symbol) : String
+      if options.includes?(:query_plan)
+        "EXPLAIN QUERY PLAN #{sql}"
+      else
+        "EXPLAIN #{sql}"
+      end
+    end
+
+    private def format_postgresql_explain(rs : DB::ResultSet, output : String::Builder, *options : Symbol)
+      # PostgreSQL EXPLAIN returns a single column with the plan
+      while rs.move_next
+        plan_line = rs.read.to_s
+        output << plan_line << "\n"
+      end
+    end
+
+    private def format_mysql_explain(rs : DB::ResultSet, output : String::Builder, *options : Symbol)
+      # MySQL/MariaDB EXPLAIN returns tabular data
+      # First, get column names
+      column_names = rs.column_names
+
+      # Format header
+      output << format_table_header(column_names)
+
+      # Format rows
+      while rs.move_next
+        row_values = [] of String
+        column_names.size.times do
+          value = rs.read
+          row_values << (value.nil? ? "NULL" : value.to_s)
+        end
+        output << format_table_row(row_values, column_names.map(&.size))
+      end
+    end
+
+    private def format_sqlite_explain(rs : DB::ResultSet, output : String::Builder)
+      # SQLite EXPLAIN returns different formats depending on the command
+      column_names = rs.column_names
+
+      if column_names.includes?("detail")
+        # EXPLAIN QUERY PLAN format
+        while rs.move_next
+          detail = rs.read.to_s
+          output << detail << "\n"
+        end
+      else
+        # Regular EXPLAIN format (opcode listing)
+        output << format_table_header(column_names)
+
+        while rs.move_next
+          row_values = [] of String
+          column_names.size.times do
+            value = rs.read
+            row_values << (value.nil? ? "NULL" : value.to_s)
+          end
+          output << format_table_row(row_values, column_names.map(&.size))
+        end
+      end
+    end
+
+    private def format_generic_explain(rs : DB::ResultSet, output : String::Builder)
+      # Generic tabular format for unknown adapters
+      column_names = rs.column_names
+      output << format_table_header(column_names)
+
+      while rs.move_next
+        row_values = [] of String
+        column_names.size.times do
+          value = rs.read
+          row_values << (value.nil? ? "NULL" : value.to_s)
+        end
+        output << format_table_row(row_values, column_names.map(&.size))
+      end
+    end
+
+    private def format_table_header(column_names : Array(String)) : String
+      # Create a simple table header
+      header = "+" + column_names.map { |name| "-" * (name.size + 2) }.join("+") + "+\n"
+      header += "|" + column_names.map { |name| " #{name} " }.join("|") + "|\n"
+      header += "+" + column_names.map { |name| "-" * (name.size + 2) }.join("+") + "+\n"
+      header
+    end
+
+    private def format_table_row(values : Array(String), column_widths : Array(Int32)) : String
+      # Format a table row with proper padding
+      row = "|"
+      values.each_with_index do |value, index|
+        width = column_widths[index] > value.size ? column_widths[index] : value.size
+        row += " #{value.ljust(width)} |"
+      end
+      row + "\n"
+    end
+
     # ========================================
     # FIND OR CREATE METHODS
     # ========================================
@@ -3195,6 +3827,7 @@ module Takarik::Data
          ] %}
 
       {% query_builder_methods = %w[unscope only reselect reorder rewhere regroup reverse_order] %}
+      {% explain_methods = %w[test_method] %}
       {% method_name = call.name.stringify %}
 
       {% if array_methods.includes?(method_name) %}
@@ -3202,7 +3835,11 @@ module Takarik::Data
       {% elsif query_builder_methods.includes?(method_name) %}
         # These methods should not be delegated - they should be handled by QueryBuilder itself
         # If we reach here, it means the method is not properly defined
-        raise "Method '#{method_name}' not found on QueryBuilder instance"
+        raise "Method " + {{method_name}} + " not found on QueryBuilder instance"
+      {% elsif explain_methods.includes?(method_name) %}
+        # These methods are defined on QueryBuilder but method_missing is intercepting them
+        # This should not happen - there might be a compilation issue
+        raise "Method " + {{method_name}} + " exists on QueryBuilder but method_missing was called. This indicates a compilation issue."
       {% else %}
         # Try to delegate to model class scope
         begin
