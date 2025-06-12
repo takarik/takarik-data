@@ -2746,19 +2746,24 @@ module Takarik::Data
         raise "Method '#{method_name}' not found on QueryBuilder instance"
       {% else %}
         # Try to delegate to model class scope
-        {% if call.args.size > 0 %}
-          scope_result = @model_class.{{call.name.id}}({{call.args.splat}})
-        {% else %}
-          scope_result = @model_class.{{call.name.id}}
-        {% end %}
+        begin
+          {% if call.args.size > 0 %}
+            scope_result = @model_class.{{call.name.id}}({{call.args.splat}})
+          {% else %}
+            scope_result = @model_class.{{call.name.id}}
+          {% end %}
 
-        # If the scope returns a QueryBuilder, merge it with this one
-        if scope_result.is_a?(Takarik::Data::QueryBuilder)
-          merge_with_scope(scope_result)
-        else
-          # If scope doesn't return QueryBuilder (e.g., conditional scope returns all),
-          # just return self to maintain chainability
-          self
+          # If the scope returns a QueryBuilder, merge it with this one
+          if scope_result.is_a?(Takarik::Data::QueryBuilder)
+            merge_with_scope(scope_result)
+          else
+            # If scope doesn't return QueryBuilder (e.g., conditional scope returns all),
+            # just return self to maintain chainability
+            self
+          end
+        rescue ex
+          # If method doesn't exist on model class, raise a more helpful error
+          raise "Method "{{call.name.id}}" not found on #{@model_class.name} or QueryBuilder"
         end
       {% end %}
     end
