@@ -1040,6 +1040,41 @@ module Takarik::Data
     end
 
     # ========================================
+    # CLASS METHODS - FIND BY SQL
+    # ========================================
+
+    # Execute a custom SQL query and return an array of model instances.
+    # This method provides a way to use custom SQL while still getting instantiated objects.
+    #
+    # Examples:
+    #   Customer.find_by_sql("SELECT * FROM customers WHERE age > 21")
+    #   Customer.find_by_sql("SELECT * FROM customers INNER JOIN orders ON customers.id = orders.customer_id ORDER BY customers.created_at DESC")
+    #   Customer.find_by_sql("SELECT * FROM customers WHERE name = ?", ["John"])
+    #   Customer.find_by_sql("SELECT * FROM customers WHERE name = ? AND age > ?", ["John", 21])
+    #
+    # The method always returns an array, even if the query returns a single record.
+    # Returns an empty array if no records are found.
+    #
+    # SQL: Executes the provided SQL directly
+    def self.find_by_sql(sql : String, params : Array(DB::Any) = [] of DB::Any)
+      results = [] of self
+
+      Takarik::Data.query_with_logging(connection, sql, params, model_name, "Load") do |rs|
+        while rs.move_next
+          instance = new
+          instance.load_from_result_set(rs)
+          results << instance
+        end
+      end
+
+      results
+    end
+
+    def self.find_by_sql(sql : String, *params : DB::Any)
+      find_by_sql(sql, params.to_a)
+    end
+
+    # ========================================
     # CLASS METHODS - BATCH PROCESSING
     # ========================================
 
