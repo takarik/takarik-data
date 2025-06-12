@@ -1503,6 +1503,16 @@ module Takarik::Data
       results
     end
 
+    # Count records in the current relation.
+    # Returns the number of records matching the current query conditions.
+    #
+    # Examples:
+    #   Customer.count  # => 5
+    #   Customer.where(first_name: 'Ryan').count  # => 2
+    #   Customer.group(:status).count  # => {"active" => 3, "inactive" => 2}
+    #
+    # SQL: SELECT COUNT(*) FROM customers
+    # SQL: SELECT COUNT(*) FROM customers WHERE (customers.first_name = 'Ryan')
     def count : Int64 | Hash(String, Int64)
       # Return 0 or empty hash if this is a none relation
       if @none
@@ -1517,7 +1527,45 @@ module Takarik::Data
         to_a.size.to_i64
       else
         original_select = @select_clause
-        @select_clause = "COUNT(*)"
+        if @distinct && @select_clause && !@select_clause.not_nil!.empty? && @select_clause != "*"
+          # Use COUNT(DISTINCT column) when distinct is enabled and we have a specific column
+          @select_clause = "COUNT(DISTINCT #{@select_clause})"
+        else
+          @select_clause = "COUNT(*)"
+        end
+        result = Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT").as(Int64)
+        @select_clause = original_select
+        result
+      end
+    end
+
+    # Count records by a specific column, counting only non-null values.
+    # This is useful for counting records that have a value present in a specific field.
+    #
+    # Examples:
+    #   Customer.count(:title)  # => 3 (only customers with a title)
+    #   Customer.where(active: true).count(:email)  # => 5 (active customers with email)
+    #
+    # SQL: SELECT COUNT(title) FROM customers
+    # SQL: SELECT COUNT(email) FROM customers WHERE (customers.active = 1)
+    def count(column : String | Symbol) : Int64 | Hash(String, Int64)
+      column_name = column.to_s
+
+      # Return 0 or empty hash if this is a none relation
+      if @none
+        return @group_clause ? {} of String => Int64 : 0_i64
+      end
+
+      # If there's a GROUP BY clause, return a hash of grouped counts
+      if @group_clause
+        grouped_count_by_column(column_name)
+      elsif @limit_value
+        # If there's a LIMIT clause, we need to count the actual records that would be returned
+        # For column counting, we need to check for non-null values
+        to_a.count { |record| !record.get_attribute(column_name).nil? }.to_i64
+      else
+        original_select = @select_clause
+        @select_clause = "COUNT(#{column_name})"
         result = Takarik::Data.scalar_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT").as(Int64)
         @select_clause = original_select
         result
@@ -1531,6 +1579,48 @@ module Takarik::Data
 
       # Create the SELECT clause with COUNT(*) and the group columns
       select_parts = ["COUNT(*) AS count_all"]
+      group_columns.each do |col|
+        select_parts << "#{col} AS #{col}"
+      end
+
+      original_select = @select_clause
+      @select_clause = select_parts.join(", ")
+
+      result_hash = {} of String => Int64
+
+      Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "COUNT") do |rs|
+        rs.each do
+          count = rs.read.as(Int64)
+
+          # Handle single or multiple group columns
+          if group_columns.size == 1
+            group_value = rs.read
+            key = group_value.nil? ? "nil" : group_value.to_s
+            result_hash[key] = count
+          else
+            # For multiple columns, create a combined key
+            group_values = [] of String
+            group_columns.size.times do
+              value = rs.read
+              group_values << (value.nil? ? "nil" : value.to_s)
+            end
+            key = group_values.join(", ")
+            result_hash[key] = count
+          end
+        end
+      end
+
+      @select_clause = original_select
+      result_hash
+    end
+
+    # Private method to handle grouped counting by column
+    private def grouped_count_by_column(column_name : String)
+      # Build SQL like: SELECT COUNT(column_name) AS count_all, status AS status FROM orders GROUP BY status
+      group_columns = @group_clause.not_nil!.split(",").map(&.strip)
+
+      # Create the SELECT clause with COUNT(column) and the group columns
+      select_parts = ["COUNT(#{column_name}) AS count_all"]
       group_columns.each do |col|
         select_parts << "#{col} AS #{col}"
       end
@@ -1753,20 +1843,74 @@ module Takarik::Data
     # AGGREGATION METHODS
     # ========================================
 
-    def sum(column : String)
-      aggregate("SUM", column)
+    # Calculate the sum of values in the specified column.
+    # Returns the sum as a number (possibly a floating-point number).
+    # Returns 0 if no records match the query or if all values are NULL.
+    #
+    # Examples:
+    #   Order.sum("subtotal")  # => 150.75
+    #   Order.where(status: "shipped").sum("subtotal")  # => 89.50
+    #
+    # SQL: SELECT SUM(subtotal) FROM orders
+    # SQL: SELECT SUM(subtotal) FROM orders WHERE (orders.status = 'shipped')
+    def sum(column : String | Symbol)
+      # Return 0 if this is a none relation
+      return 0 if @none
+
+      result = aggregate("SUM", column.to_s)
+      # SUM returns NULL when there are no records, convert to 0
+      result.nil? ? 0 : result
     end
 
-    def average(column : String)
-      aggregate("AVG", column)
+    # Calculate the average of values in the specified column.
+    # Returns the average as a number (possibly a floating-point number).
+    # Returns nil if no records match the query or if all values are NULL.
+    #
+    # Examples:
+    #   Order.average("subtotal")  # => 25.125
+    #   Order.where(status: "shipped").average("subtotal")  # => 29.83
+    #
+    # SQL: SELECT AVG(subtotal) FROM orders
+    # SQL: SELECT AVG(subtotal) FROM orders WHERE (orders.status = 'shipped')
+    def average(column : String | Symbol)
+      # Return nil if this is a none relation
+      return nil if @none
+
+      aggregate("AVG", column.to_s)
     end
 
-    def minimum(column : String)
-      aggregate("MIN", column)
+    # Find the minimum value in the specified column.
+    # Returns the minimum value with the corresponding data type.
+    # Returns nil if no records match the query or if all values are NULL.
+    #
+    # Examples:
+    #   Order.minimum("subtotal")  # => 5.99
+    #   Order.where(status: "shipped").minimum("created_at")  # => 2023-01-15 10:30:00
+    #
+    # SQL: SELECT MIN(subtotal) FROM orders
+    # SQL: SELECT MIN(created_at) FROM orders WHERE (orders.status = 'shipped')
+    def minimum(column : String | Symbol)
+      # Return nil if this is a none relation
+      return nil if @none
+
+      aggregate("MIN", column.to_s)
     end
 
-    def maximum(column : String)
-      aggregate("MAX", column)
+    # Find the maximum value in the specified column.
+    # Returns the maximum value with the corresponding data type.
+    # Returns nil if no records match the query or if all values are NULL.
+    #
+    # Examples:
+    #   Order.maximum("subtotal")  # => 199.99
+    #   Order.where(status: "shipped").maximum("created_at")  # => 2023-12-31 23:59:59
+    #
+    # SQL: SELECT MAX(subtotal) FROM orders
+    # SQL: SELECT MAX(created_at) FROM orders WHERE (orders.status = 'shipped')
+    def maximum(column : String | Symbol)
+      # Return nil if this is a none relation
+      return nil if @none
+
+      aggregate("MAX", column.to_s)
     end
 
     # ========================================

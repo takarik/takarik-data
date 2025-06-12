@@ -569,19 +569,44 @@ module Takarik::Data
     # CLASS METHODS - AGGREGATION
     # ========================================
 
-    def self.sum(column : String)
+    # Calculate the sum of values in the specified column for all records in the model's table.
+    # This method call will look something like this: Order.sum("subtotal")
+    #
+    # Examples:
+    #   Order.sum("subtotal")  # => 150.75
+    #   Order.where(status: "shipped").sum("subtotal")  # => 89.50
+    def self.sum(column : String | Symbol)
       query.sum(column)
     end
 
-    def self.average(column : String)
+    # Calculate the average of values in the specified column for all records in the model's table.
+    # This method call will look something like this: Order.average("subtotal")
+    # Returns a number (possibly a floating-point number such as 3.14159265).
+    #
+    # Examples:
+    #   Order.average("subtotal")  # => 25.125
+    #   Order.where(status: "shipped").average("subtotal")  # => 29.83
+    def self.average(column : String | Symbol)
       query.average(column)
     end
 
-    def self.minimum(column : String)
+    # Find the minimum value in the specified column for all records in the model's table.
+    # This method call will look something like this: Order.minimum("subtotal")
+    #
+    # Examples:
+    #   Order.minimum("subtotal")  # => 5.99
+    #   Order.where(status: "shipped").minimum("created_at")  # => 2023-01-15 10:30:00
+    def self.minimum(column : String | Symbol)
       query.minimum(column)
     end
 
-    def self.maximum(column : String)
+    # Find the maximum value in the specified column for all records in the model's table.
+    # This method call will look something like this: Order.maximum("subtotal")
+    #
+    # Examples:
+    #   Order.maximum("subtotal")  # => 199.99
+    #   Order.where(status: "shipped").maximum("created_at")  # => 2023-12-31 23:59:59
+    def self.maximum(column : String | Symbol)
       query.maximum(column)
     end
 
@@ -853,8 +878,27 @@ module Takarik::Data
       results
     end
 
+    # Count the number of records in the model's table.
+    # If you want to see how many records are in your model's table you could call Customer.count.
+    # Returns the number of records as an integer.
+    #
+    # Examples:
+    #   Customer.count  # => 5
+    #   Customer.where(first_name: 'Ryan').count  # => 2
+    #   Customer.group(:status).count  # => {"active" => 3, "inactive" => 2}
     def self.count : Int64 | Hash(String, Int64)
       query.count
+    end
+
+    # Count records by a specific column, counting only non-null values.
+    # If you want to be more specific and find all the customers with a title present in the database
+    # you can use Customer.count(:title).
+    #
+    # Examples:
+    #   Customer.count(:title)  # => 3 (only customers with a title)
+    #   Customer.where(active: true).count(:email)  # => 5 (active customers with email)
+    def self.count(column : String | Symbol) : Int64 | Hash(String, Int64)
+      query.count(column)
     end
 
     # Find the first record matching the given conditions without any implicit ordering.
