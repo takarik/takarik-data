@@ -1158,7 +1158,7 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(:posts)
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("ON users.id = posts.user_id")
       end
 
@@ -1167,9 +1167,9 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(:posts, :comments)
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("ON users.id = posts.user_id")
-        sql.should contain("LEFT JOIN comments")
+        sql.should contain("INNER JOIN comments")
         sql.should contain("ON users.id = comments.user_id")
       end
 
@@ -1178,8 +1178,8 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(associations)
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
-        sql.should contain("LEFT JOIN comments")
+        sql.should contain("INNER JOIN posts")
+        sql.should contain("INNER JOIN comments")
       end
 
       it "supports direct array syntax" do
@@ -1187,8 +1187,8 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins([:posts, :comments])
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
-        sql.should contain("LEFT JOIN comments")
+        sql.should contain("INNER JOIN posts")
+        sql.should contain("INNER JOIN comments")
       end
 
       it "supports custom SQL joins" do
@@ -1208,7 +1208,7 @@ describe Takarik::Data::QueryBuilder do
         sql = query.to_sql
 
         # Should join users to posts, then posts to comments
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("ON users.id = posts.user_id")
         sql.should contain("INNER JOIN comments")
         sql.should contain("ON posts.id = comments.post_id")
@@ -1221,7 +1221,7 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(nested_hash)
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("INNER JOIN comments")
       end
 
@@ -1230,7 +1230,7 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(posts: [:comments])
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("ON users.id = posts.user_id")
         sql.should contain("INNER JOIN comments")
         sql.should contain("ON posts.id = comments.post_id")
@@ -1241,7 +1241,7 @@ describe Takarik::Data::QueryBuilder do
         query = User.joins(posts: :comments)
         sql = query.to_sql
 
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("INNER JOIN comments")
       end
 
@@ -1255,10 +1255,10 @@ describe Takarik::Data::QueryBuilder do
         query3 = User.joins(nested_hash)
 
         # All should generate valid SQL
-        query1.to_sql.should contain("LEFT JOIN posts")
-        query2.to_sql.should contain("LEFT JOIN posts")
-        query2.to_sql.should contain("LEFT JOIN comments")
-        query3.to_sql.should contain("LEFT JOIN posts")
+        query1.to_sql.should contain("INNER JOIN posts")
+        query2.to_sql.should contain("INNER JOIN posts")
+        query2.to_sql.should contain("INNER JOIN comments")
+        query3.to_sql.should contain("INNER JOIN posts")
         query3.to_sql.should contain("INNER JOIN comments")
       end
 
@@ -1271,7 +1271,7 @@ describe Takarik::Data::QueryBuilder do
           .limit(10)
 
         sql = query.to_sql
-        sql.should contain("LEFT JOIN posts")
+        sql.should contain("INNER JOIN posts")
         sql.should contain("WHERE (users.active = ?) AND (posts.published = ?)")
         sql.should contain("ORDER BY users.name")
         sql.should contain("LIMIT 10")

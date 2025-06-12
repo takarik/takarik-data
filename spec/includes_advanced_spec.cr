@@ -50,6 +50,7 @@ class BookAdvanced < Takarik::Data::BaseModel
   belongs_to author, class_name: AuthorAdvanced, foreign_key: :author_id
   belongs_to supplier, class_name: Supplier, foreign_key: :supplier_id
   has_many order_items, class_name: OrderItem, foreign_key: :book_id
+  has_many reviews, class_name: Review, foreign_key: :book_id
 
   timestamps
 end
@@ -82,8 +83,10 @@ class Review < Takarik::Data::BaseModel
   column rating, Int32
   column comment, String
   column customer_id, Int64
+  column book_id, Int64
 
   belongs_to customer, class_name: Customer, foreign_key: :customer_id
+  belongs_to book, class_name: BookAdvanced, foreign_key: :book_id
 
   timestamps
 end
@@ -145,13 +148,23 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       # Create test data
       customer = Customer.create(name: "John Doe", email: "john@example.com")
 
+      # Create a book for the reviews (since Review model has book_id)
+      author = AuthorAdvanced.create(first_name: "Test", last_name: "Author")
+      supplier = Supplier.create(name: "Test Supplier", address: "123 Test St")
+      book = BookAdvanced.create(
+        title: "Test Book",
+        author_id: author.id,
+        supplier_id: supplier.id,
+        out_of_print: false
+      )
+
       # Create orders
       order1 = Order.create(total: 100.0, customer_id: customer.id)
       order2 = Order.create(total: 200.0, customer_id: customer.id)
 
-      # Create reviews
-      review1 = Review.create(rating: 5, comment: "Great!", customer_id: customer.id)
-      review2 = Review.create(rating: 4, comment: "Good", customer_id: customer.id)
+      # Create reviews with both customer_id and book_id
+      review1 = Review.create(rating: 5, comment: "Great!", customer_id: customer.id, book_id: book.id)
+      review2 = Review.create(rating: 4, comment: "Good", customer_id: customer.id, book_id: book.id)
 
       # Test multiple includes
       customers = Customer.includes(:orders, :reviews).to_a
@@ -216,6 +229,126 @@ describe "Advanced Includes Testing - ActiveRecord Compliance" do
       # Verify both approaches give same results
       books_n1.size.should eq(books_includes.size)
       author_names_n1.sort.should eq(author_names_includes.sort)
+    end
+  end
+
+  describe "Complex nested joins (Rails compatibility)" do
+    it "should handle Author.joins(books: [{ reviews: { customer: :orders } }, :supplier])" do
+      # Create comprehensive test data
+      author = AuthorAdvanced.create(first_name: "Complex", last_name: "Author")
+      supplier = Supplier.create(name: "Test Supplier", address: "123 Test St")
+
+      book = BookAdvanced.create(
+        title: "Complex Book",
+        author_id: author.id,
+        supplier_id: supplier.id,
+        out_of_print: false
+      )
+
+      customer = Customer.create(name: "Test Customer", email: "test@example.com")
+
+      order = Order.create(total: 99.99, customer_id: customer.id)
+
+      review = Review.create(
+        rating: 5,
+        comment: "Great book!",
+        customer_id: customer.id,
+        book_id: book.id
+      )
+
+      # Let's test step by step to understand the expected behavior
+
+      # Step 1: Simple join
+      simple_query = AuthorAdvanced.joins(:books)
+
+      # Step 2: Two level nested
+      two_level_query = AuthorAdvanced.joins(books: :reviews)
+
+      # Step 3: Three level nested (this should work)
+      three_level_query = AuthorAdvanced.joins(books: {reviews: :customer})
+
+      # Step 4: Four level nested (this should work now!)
+      four_level_query = AuthorAdvanced.joins(books: {reviews: {customer: :orders}})
+
+      # Step 5: Test the full complex nested join with array
+      full_query = AuthorAdvanced.joins(books: [{reviews: {customer: :orders}}, :supplier])
+
+      # Test that all work
+      simple_query.to_a.size.should eq(1)
+      two_level_query.to_a.size.should eq(1)
+      three_level_query.to_a.size.should eq(1)
+      four_level_query.to_a.size.should eq(1)
+      full_query.to_a.size.should eq(1)
+    end
+
+    it "should handle simpler nested joins like User.joins(posts: [:comments])" do
+      # This should still work with our enhanced implementation
+      author = AuthorAdvanced.create(first_name: "Simple", last_name: "Author")
+      supplier = Supplier.create(name: "Simple Supplier", address: "456 Simple St")
+
+      book = BookAdvanced.create(
+        title: "Simple Book",
+        author_id: author.id,
+        supplier_id: supplier.id,
+        out_of_print: false
+      )
+
+      customer = Customer.create(name: "Simple Customer", email: "simple@example.com")
+
+      review = Review.create(
+        rating: 4,
+        comment: "Good book",
+        customer_id: customer.id,
+        book_id: book.id
+      )
+
+      # Test simple nested join
+      query = AuthorAdvanced.joins(books: [:reviews])
+
+      sql = query.to_sql
+
+      sql.should contain("INNER JOIN books_advanced ON")
+      sql.should contain("INNER JOIN reviews ON")
+
+      results = query.to_a
+      results.size.should eq(1)
+      results.first.last_name.should eq("Author")
+    end
+
+    it "should handle mixed array content like books: [:supplier, { reviews: :customer }]" do
+      # Create test data
+      author = AuthorAdvanced.create(first_name: "Mixed", last_name: "Author")
+      supplier = Supplier.create(name: "Mixed Supplier", address: "789 Mixed Ave")
+
+      book = BookAdvanced.create(
+        title: "Mixed Book",
+        author_id: author.id,
+        supplier_id: supplier.id,
+        out_of_print: false
+      )
+
+      customer = Customer.create(name: "Mixed Customer", email: "mixed@example.com")
+
+      review = Review.create(
+        rating: 3,
+        comment: "Okay book",
+        customer_id: customer.id,
+        book_id: book.id
+      )
+
+      # Test mixed array content
+      query = AuthorAdvanced.joins(books: [:supplier, {reviews: :customer}])
+
+      sql = query.to_sql
+
+      sql.should contain("INNER JOIN books_advanced ON")
+      sql.should contain("INNER JOIN suppliers ON")
+      sql.should contain("INNER JOIN reviews ON")
+      sql.should contain("INNER JOIN customers ON")
+
+      results = query.to_a
+      results.size.should eq(1)
+      results.first.last_name.should eq("Author")
     end
   end
 end
@@ -308,6 +441,7 @@ def create_test_tables
         rating INTEGER,
         comment TEXT,
         customer_id INTEGER,
+        book_id INTEGER,
         created_at DATETIME,
         updated_at DATETIME
       )

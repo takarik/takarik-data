@@ -436,6 +436,7 @@ module Takarik::Data
     #   User.joins(:posts, :account)                 # Multiple associations
     #   User.joins(posts: [:comments])               # Nested joins
     #   User.joins("LEFT JOIN bookmarks ON ...")     # Custom SQL
+    #   Author.joins(books: [{ reviews: { customer: :orders } }, :supplier])  # Complex nested
     def joins(*associations : String | Symbol)
       associations.each do |association|
         @has_joins = true
@@ -452,21 +453,15 @@ module Takarik::Data
       self
     end
 
-    def joins(nested_associations : Hash(String | Symbol, Array(String | Symbol) | String | Symbol))
+    # Simple flexible signature that can handle any nested structure
+    def joins(nested_associations : Hash)
       nested_associations.each do |parent_association, child_associations|
-        # First join the parent association
+        # First join the parent association using smart join logic
         @has_joins = true
         add_smart_association_join(parent_association.to_s)
 
         # Then join the child associations
-        case child_associations
-        when Array
-          child_associations.each do |child_association|
-            join_nested_association(parent_association.to_s, child_association.to_s)
-          end
-        when String, Symbol
-          join_nested_association(parent_association.to_s, child_associations.to_s)
-        end
+        process_nested_association_value(parent_association.to_s, child_associations)
       end
       self
     end
@@ -492,17 +487,10 @@ module Takarik::Data
 
     # Support for NamedTuple syntax: User.joins(posts: [:comments])
     def joins(**named_associations)
-      # Convert NamedTuple to Hash
-      hash = Hash(String | Symbol, Array(String | Symbol) | String | Symbol).new
+      # Convert NamedTuple to Hash and delegate to the Hash version
+      hash = {} of String => typeof(named_associations.values.first)
       named_associations.each do |key, value|
-        case value
-        when Array
-          hash[key.to_s] = value.map(&.as(String | Symbol)).as(Array(String | Symbol) | String | Symbol)
-        when String, Symbol
-          hash[key.to_s] = value.as(Array(String | Symbol) | String | Symbol)
-        else
-          raise "Invalid association value type: #{value.class}"
-        end
+        hash[key.to_s] = value
       end
       joins(hash)
     end
@@ -2030,22 +2018,29 @@ module Takarik::Data
         raise "Association '#{association_name}' not found for #{@model_class.name}"
       end
 
-      # Choose join type based on association configuration
-      join_type = case association.type
-                  when .belongs_to?
-                    # For belongs_to associations, use the optional parameter to determine join type
-                    association.optional ? "LEFT JOIN" : "INNER JOIN"
-                  when .has_many?, .has_one?
-                    # For has_many/has_one, typically use LEFT JOIN since the parent might not have children
-                    "LEFT JOIN"
-                  else
-                    raise "Unknown association type: #{association.type}"
-                  end
-
+      join_type = get_smart_join_type(association)
       add_association_join(join_type, association_name)
     end
 
+    # Extract smart join type logic for reuse in nested associations
+    # Choose join type based on association configuration, matching Rails behavior
+    private def get_smart_join_type(association)
+      case association.type
+      when .belongs_to?
+        # For belongs_to associations, use the optional parameter to determine join type
+        association.optional ? "LEFT JOIN" : "INNER JOIN"
+      when .has_many?, .has_one?
+        # For has_many/has_one, use INNER JOIN to match Rails behavior
+        # This filters to only show parent records that have associated records
+        # Users can use left_join() explicitly if they want to include parents without children
+        "INNER JOIN"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+    end
+
     # Handle nested association joins like User.joins(posts: [:comments])
+    # Uses smart join logic to choose the best join type based on association configuration
     private def join_nested_association(parent_association : String, child_association : String)
       # Get the parent association to find the intermediate model
       parent_associations = @model_class.associations
@@ -2084,10 +2079,156 @@ module Takarik::Data
         raise "Unknown association type: #{child_assoc.not_nil!.type}"
       end
 
-      # Choose appropriate join type (using INNER JOIN for nested joins by default, like Rails)
-      join_type = "INNER JOIN"
+      # Use smart join logic to choose the best join type based on association configuration
+      join_type = get_smart_join_type(child_assoc.not_nil!)
       @joins << "#{join_type} #{child_table} ON #{on_condition}"
       @has_joins = true
+    end
+
+    # Process nested association values recursively to handle complex structures
+    private def process_nested_association_value(parent_association : String, value)
+      case value
+      when Array
+        value.each do |item|
+          process_nested_association_value(parent_association, item)
+        end
+      when String, Symbol
+        # For simple nested associations, use smart join logic
+        join_nested_association(parent_association, value.to_s)
+      when Hash, NamedTuple
+        # Handle both Hash and NamedTuple the same way
+        if value.is_a?(NamedTuple)
+          # Convert NamedTuple to Hash-like iteration
+          value.each do |nested_parent, nested_child|
+            # First join the nested parent association
+            join_nested_association(parent_association, nested_parent.to_s)
+
+            # Then recursively process the nested child
+            process_deeply_nested_association(parent_association, nested_parent.to_s, nested_child)
+          end
+        else
+          # Handle regular Hash
+          value.each do |nested_parent, nested_child|
+            # First join the nested parent association
+            join_nested_association(parent_association, nested_parent.to_s)
+
+            # Then recursively process the nested child
+            process_deeply_nested_association(parent_association, nested_parent.to_s, nested_child)
+          end
+        end
+      else
+        raise "Invalid nested association value type: #{value.class}"
+      end
+    end
+
+    # Handle deeply nested associations like { reviews: { customer: :orders } }
+    private def process_deeply_nested_association(root_association : String, current_association : String, value)
+      case value
+      when String, Symbol
+        # Simple case: join the final association
+        # We need to join current_association -> value
+        join_association_from_model(current_association, value.to_s)
+      when Hash, NamedTuple
+        # Recursive case: process nested hash or NamedTuple
+        if value.is_a?(NamedTuple)
+          value.each do |nested_parent, nested_child|
+            # Join current_association -> nested_parent
+            join_association_from_model(current_association, nested_parent.to_s)
+
+            # Continue recursively with nested_parent as the new current
+            process_deeply_nested_association(root_association, nested_parent.to_s, nested_child)
+          end
+        else
+          value.each do |nested_parent, nested_child|
+            # Join current_association -> nested_parent
+            join_association_from_model(current_association, nested_parent.to_s)
+
+            # Continue recursively with nested_parent as the new current
+            process_deeply_nested_association(root_association, nested_parent.to_s, nested_child)
+          end
+        end
+      when Array
+        # Array case: process each item
+        value.each do |item|
+          process_deeply_nested_association(root_association, current_association, item)
+        end
+      else
+        raise "Invalid deeply nested association value type: #{value.class}"
+      end
+    end
+
+    # Join an association starting from a specific model in the chain
+    # This is different from join_nested_association which always starts from @model_class
+    # Uses smart join logic to choose the best join type based on association configuration
+    private def join_association_from_model(from_association : String, to_association : String)
+      # Find the model class for the from_association
+      from_model_class = find_model_for_association(from_association)
+
+      # Find the to_association on that model
+      associations = from_model_class.associations
+      association = associations.find { |a| a.name == to_association }
+
+      unless association && association.class_type
+        raise "Association '#{to_association}' not found on #{from_model_class.name}"
+      end
+
+      # Skip polymorphic associations
+      if association.polymorphic || association.class_type.nil?
+        raise "Cannot join polymorphic association '#{to_association}'"
+      end
+
+      # Build the join
+      from_table = from_model_class.table_name
+      to_table = association.class_type.not_nil!.table_name
+
+      case association.type
+      when .belongs_to?
+        on_condition = "#{from_table}.#{association.foreign_key} = #{to_table}.#{association.primary_key}"
+      when .has_many?, .has_one?
+        on_condition = "#{from_table}.#{association.primary_key} = #{to_table}.#{association.foreign_key}"
+      else
+        raise "Unknown association type: #{association.type}"
+      end
+
+      # Use smart join logic to choose the best join type based on association configuration
+      join_type = get_smart_join_type(association)
+      @joins << "#{join_type} #{to_table} ON #{on_condition}"
+      @has_joins = true
+    end
+
+    # Find the model class for a given association name by traversing the existing joins
+    private def find_model_for_association(association_name : String)
+      # Collect all models that are part of the join chain
+      models_in_chain = [@model_class.as(Takarik::Data::BaseModel.class)]
+
+      # Add models from direct associations
+      @model_class.associations.each do |assoc|
+        if assoc.class_type
+          models_in_chain << assoc.class_type.not_nil!
+        end
+      end
+
+      # Add models from nested associations (go deeper)
+      models_to_check = models_in_chain.dup
+      models_to_check.each do |model|
+        model.associations.each do |assoc|
+          if assoc.class_type && !models_in_chain.includes?(assoc.class_type.not_nil!)
+            models_in_chain << assoc.class_type.not_nil!
+          end
+        end
+      end
+
+      # Now search for the association in all these models
+      models_in_chain.each do |model|
+        associations = model.associations
+        association = associations.find { |a| a.name == association_name }
+        if association && association.class_type
+          return association.class_type.not_nil!
+        end
+      end
+
+      # If still not found, raise an error
+      raise "Could not find model for association '#{association_name}'"
     end
 
     private def add_includes(association_name : String)
