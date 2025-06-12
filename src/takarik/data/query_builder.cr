@@ -165,12 +165,35 @@ module Takarik::Data
     end
 
     def where(**conditions)
-      where(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+      # Handle conditions properly, including arrays
+      conditions.each do |key, value|
+        case value
+        when Array
+          # Arrays need special handling - call the array overload directly
+          where(key.to_s, value.map(&.as(DB::Any)))
+        else
+          # Handle single values normally
+          where({key.to_s => value.as(DB::Any)})
+        end
+      end
+      self
     end
 
     # Named placeholder conditions - must come before variadic method for proper resolution
     def where(condition : String, **named_params)
-      where(condition, named_params.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+      # Handle named parameters properly, including arrays
+      processed_params = {} of String => DB::Any
+      named_params.each do |key, value|
+        case value
+        when Array
+          # Arrays in named parameters are not supported in this context
+          # This would require complex parsing of the condition string
+          raise "Arrays are not supported in named parameter conditions. Use Hash conditions instead."
+        else
+          processed_params[key.to_s] = value.as(DB::Any)
+        end
+      end
+      where(condition, processed_params)
     end
 
     def where(condition : String, *params : DB::Any)
@@ -263,7 +286,18 @@ module Takarik::Data
     end
 
     def not(**conditions)
-      not(conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) })
+      # Handle conditions properly, including arrays
+      conditions.each do |key, value|
+        case value
+        when Array
+          # Arrays need special handling - call the array overload directly
+          not(key.to_s, value.map(&.as(DB::Any)))
+        else
+          # Handle single values normally
+          not({key.to_s => value.as(DB::Any)})
+        end
+      end
+      self
     end
 
     def not(column : String, values : Array(DB::Any))
@@ -1533,31 +1567,94 @@ module Takarik::Data
     end
 
     def exists?
-      result = count
-      case result
-      when Int64
-        result > 0
-      when Hash(String, Int64)
-        result.any? { |_, v| v > 0 }
+      # Return false if this is a none relation
+      return false if @none
+
+      # For grouped queries, use count-based approach
+      if @group_clause
+        result = count
+        case result
+        when Hash(String, Int64)
+          result.any? { |_, v| v > 0 }
+        else
+          false
+        end
       else
-        false
+        # Use optimized SELECT 1 query for existence check
+        original_select = @select_clause
+        original_limit = @limit_value
+        @select_clause = "1"
+        @limit_value = 1
+
+        exists = false
+        Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "Exists") do |rs|
+          exists = rs.move_next
+        end
+
+        @select_clause = original_select
+        @limit_value = original_limit
+        exists
       end
     end
 
     def empty?
-      result = count
-      case result
-      when Int64
-        result == 0
-      when Hash(String, Int64)
-        result.all? { |_, v| v == 0 }
-      else
-        true
-      end
+      !exists?
     end
 
     def any?
       exists?
+    end
+
+    # Check if there are more than one record matching the current query.
+    # Uses an optimized approach with LIMIT 2 to avoid counting all records.
+    #
+    # Examples:
+    #   Order.many?  # => true if there are 2 or more orders
+    #   Order.shipped.many?  # => true if there are 2 or more shipped orders
+    #   Book.where(out_of_print: true).many?  # => true if there are 2 or more out of print books
+    def many?
+      # Return false if this is a none relation
+      return false if @none
+
+      # If there's already a limit of 1 or less, can't have many
+      if @limit_value.try(&.<= 1)
+        return false
+      end
+
+      # For grouped queries, use count-based approach
+      if @group_clause
+        result = count
+        case result
+        when Hash(String, Int64)
+          result.count { |_, v| v > 0 } > 1
+        else
+          false
+        end
+      else
+        # Use optimized SELECT 1 query with LIMIT 2 (or respect existing limit)
+        original_select = @select_clause
+        original_limit = @limit_value
+        @select_clause = "1"
+
+        # Use the smaller of existing limit or 2
+        effective_limit = if @limit_value && @limit_value.not_nil! < 2
+                           @limit_value.not_nil!
+                         else
+                           2
+                         end
+        @limit_value = effective_limit
+
+        count = 0
+        Takarik::Data.query_with_logging(@model_class.connection, to_sql, combined_params, @model_class.name, "Many") do |rs|
+          while rs.move_next && count < 2
+            count += 1
+          end
+        end
+
+        @select_clause = original_select
+        @limit_value = original_limit
+        count > 1
+      end
     end
 
     # ========================================

@@ -1135,6 +1135,72 @@ module Takarik::Data
     end
 
     # ========================================
+    # CLASS METHODS - EXISTENCE CHECKING
+    # ========================================
+
+    # Check for the existence of objects using various approaches.
+    # This method will query the database using an optimized existence check,
+    # but instead of returning an object or collection of objects it will return either true or false.
+    #
+    # Examples:
+    #   Customer.exists?(1)  # => true/false
+    #   Customer.exists?([1, 2, 3])  # => true if any of these IDs exist
+    #   Customer.exists?(id: [1, 2, 3])  # => true if any of these IDs exist
+    #   Customer.exists?(first_name: ["Jane", "Sergei"])  # => true if any match
+    #   Customer.exists?  # => true if any customers exist
+    #   Customer.where(first_name: "Ryan").exists?  # => true if any Ryan exists
+    def self.exists?(id : DB::Any)
+      where(primary_key, id).exists?
+    end
+
+    def self.exists?(ids : Array)
+      return false if ids.empty?
+      where(primary_key, ids).exists?
+    end
+
+    def self.exists?(conditions : Hash(String, DB::Any))
+      where(conditions).exists?
+    end
+
+    def self.exists?(**conditions)
+      where(**conditions).exists?
+    end
+
+    def self.exists?
+      query.exists?
+    end
+
+    # Check if any records exist. This is an alias for exists?.
+    #
+    # Examples:
+    #   Order.any?  # => true if any orders exist
+    #   Order.shipped.any?  # => true if any shipped orders exist
+    #   Book.where(out_of_print: true).any?  # => true if any out of print books exist
+    def self.any?
+      query.any?
+    end
+
+    # Check if there are more than one record.
+    # Uses an optimized approach to avoid counting all records.
+    #
+    # Examples:
+    #   Order.many?  # => true if there are 2 or more orders
+    #   Order.shipped.many?  # => true if there are 2 or more shipped orders
+    #   Book.where(out_of_print: true).many?  # => true if there are 2 or more out of print books
+    def self.many?
+      query.many?
+    end
+
+    # Check if the table/relation is empty.
+    #
+    # Examples:
+    #   Customer.empty?  # => true if no customers exist
+    #   Customer.where(active: false).empty?  # => true if no inactive customers exist
+    def self.empty?
+      query.empty?
+    end
+
+    # ========================================
     # CLASS METHODS - BATCH PROCESSING
     # ========================================
 
