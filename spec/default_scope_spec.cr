@@ -110,7 +110,7 @@ describe "Default Scope" do
       all_products.size.should eq(3) # All products including inactive
 
       active_count = all_products.count { |p| p.active == true }
-      inactive_count = all_products.count { |p| p.active.nil? }
+      inactive_count = all_products.count { |p| p.active == false }
       active_count.should eq(2)
       inactive_count.should eq(1)
     end
@@ -122,11 +122,11 @@ describe "Default Scope" do
     end
 
     it "allows chaining after .unscoped" do
-      # Note: false values are stored as 0 in SQLite but loaded as nil
+      # Note: false values are stored as 0 in SQLite but loaded as false (not nil)
       # We need to query for records where active = 0
       inactive_products = ProductDefaultScope.unscoped.where("active = ?", 0).to_a
       inactive_products.size.should eq(1)
-      inactive_products.all? { |p| p.active.nil? }.should be_true
+      inactive_products.all? { |p| p.active == false }.should be_true
     end
 
     it "applies default scope to .find method" do

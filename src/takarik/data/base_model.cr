@@ -181,7 +181,7 @@ module Takarik::Data
       QueryBuilder(self).new(self)
     end
 
-        # Remove all scoping and execute the given block in an unscoped context
+    # Remove all scoping and execute the given block in an unscoped context
     # This is useful for temporarily bypassing default scopes
     #
     # Examples:
@@ -2045,6 +2045,19 @@ module Takarik::Data
         # Define properties for each key
         {% for key in name_or_keys %}
           define_property_with_accessors({{key}}, {{type}})
+
+                    # Generate dynamic finder methods for each composite key
+          def self.find_by_{{key.id}}(value)
+            conditions = Hash(String, DB::Any).new
+            conditions[{{key.id.stringify}}] = value.as(DB::Any)
+            find_by(conditions)
+          end
+
+          def self.find_by_{{key.id}}!(value)
+            conditions = Hash(String, DB::Any).new
+            conditions[{{key.id.stringify}}] = value.as(DB::Any)
+            find_by!(conditions)
+          end
         {% end %}
 
         # Override find methods for composite key support
@@ -2118,11 +2131,37 @@ module Takarik::Data
 
         # Define the property for the primary key
         define_property_with_accessors({{name_or_keys}}, {{type}})
+
+                # Generate dynamic finder methods for the primary key
+        def self.find_by_{{name_or_keys.id}}(value)
+          conditions = Hash(String, DB::Any).new
+          conditions[{{name_or_keys.id.stringify}}] = value.as(DB::Any)
+          find_by(conditions)
+        end
+
+        def self.find_by_{{name_or_keys.id}}!(value)
+          conditions = Hash(String, DB::Any).new
+          conditions[{{name_or_keys.id.stringify}}] = value.as(DB::Any)
+          find_by!(conditions)
+        end
       {% end %}
     end
 
     macro column(name, type, **options)
       define_property_with_accessors({{name}}, {{type}})
+
+      # Generate dynamic finder methods for this column
+      def self.find_by_{{name.id}}(value)
+        conditions = Hash(String, DB::Any).new
+        conditions[{{name.id.stringify}}] = value.as(DB::Any)
+        find_by(conditions)
+      end
+
+      def self.find_by_{{name.id}}!(value)
+        conditions = Hash(String, DB::Any).new
+        conditions[{{name.id.stringify}}] = value.as(DB::Any)
+        find_by!(conditions)
+      end
     end
 
     macro table_name(name)
@@ -2683,7 +2722,11 @@ module Takarik::Data
 
         # Also update the attributes hash
         if value.nil?
-          @attributes.delete({{name.id.stringify}})
+          if @persisted
+            @attributes[{{name.id.stringify}}] = nil.as(DB::Any)
+          else
+            @attributes.delete({{name.id.stringify}})
+          end
         else
           @attributes[{{name.id.stringify}}] = value.as(DB::Any)
         end
@@ -2697,7 +2740,7 @@ module Takarik::Data
 
       # Override getter to return from instance variable or attributes
       def {{name.id}}
-        if @{{name.id}}
+        if !@{{name.id}}.nil?
           @{{name.id}}
         elsif @attributes.has_key?({{name.id.stringify}})
           value = @attributes[{{name.id.stringify}}]
@@ -2736,8 +2779,10 @@ module Takarik::Data
             case value
             when 1, "1", "true", "t", true
               true
-            when 0, "0", "false", "f", false, nil
+            when 0, "0", "false", "f", false
               false
+            when nil
+              nil
             else
               nil
             end
@@ -2811,8 +2856,10 @@ module Takarik::Data
                 @{{ivar.name}} = case value
                 when 1, "1", "true", "t", true
                   true
-                when 0, "0", "false", "f", false, nil
+                when 0, "0", "false", "f", false
                   false
+                when nil
+                  nil
                 else
                   nil
                 end
