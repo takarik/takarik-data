@@ -236,7 +236,6 @@ module Takarik::Data
     private def explain_with_includes_impl(*options : Symbol)
       adapter = detect_database_adapter
       output = String.build do |str|
-
         # Show explain for the main query first (avoid executing to_a which might fail)
         main_sql = to_sql
         explain_sql = build_explain_sql(main_sql, adapter, *options)
@@ -275,7 +274,6 @@ module Takarik::Data
       # Call the version with options but pass no options
       adapter = detect_database_adapter
       output = String.build do |str|
-
         # Show explain for the main query first (avoid executing to_a which might fail)
         main_sql = to_sql
         explain_sql = build_explain_sql(main_sql, adapter)
@@ -2109,10 +2107,10 @@ module Takarik::Data
 
         # Use the smaller of existing limit or 2
         effective_limit = if @limit_value && @limit_value.not_nil! < 2
-                           @limit_value.not_nil!
-                         else
-                           2
-                         end
+                            @limit_value.not_nil!
+                          else
+                            2
+                          end
         @limit_value = effective_limit
 
         count = 0
@@ -2293,8 +2291,6 @@ module Takarik::Data
 
       aggregate("MAX", column.to_s)
     end
-
-
 
     # Test method to check if methods are being found
     def test_method
@@ -2748,7 +2744,7 @@ module Takarik::Data
         # Delete only those specific records
         placeholders = ids.map { "?" }.join(", ")
         sql = "DELETE FROM #{@model_class.table_name} WHERE #{primary_key} IN (#{placeholders})"
-        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, ids, @model_class.name, "Destroy")
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, ids, @model_class.name, "Delete")
         result.rows_affected
       else
         # Normal delete without LIMIT/OFFSET
@@ -2779,7 +2775,7 @@ module Takarik::Data
           sql += " WHERE #{where_clause}"
         end
 
-        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, combined_params, @model_class.name, "Destroy")
+        result = Takarik::Data.exec_with_logging(@model_class.connection, sql, combined_params, @model_class.name, "Delete")
         result.rows_affected
       end
     end
@@ -2788,6 +2784,24 @@ module Takarik::Data
       records = to_a
       records.each(&.destroy)
       records.size
+    end
+
+    def destroy_by(conditions : Hash(String, DB::Any))
+      where(conditions).destroy_all
+    end
+
+    def destroy_by(**conditions)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      destroy_by(processed_conditions)
+    end
+
+    def delete_by(conditions : Hash(String, DB::Any))
+      where(conditions).delete_all
+    end
+
+    def delete_by(**conditions)
+      processed_conditions = conditions.to_h.transform_keys(&.to_s).transform_values { |v| v.as(DB::Any) }
+      delete_by(processed_conditions)
     end
 
     # Retrieve records in batches and yield each one to the block.

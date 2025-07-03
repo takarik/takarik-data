@@ -3,8 +3,8 @@ require "./spec_helper"
 describe "find_by_sql" do
   before_each do
     # Clean up any existing test data
-    User.all.delete_all
-    Post.all.delete_all
+    User.delete_all
+    Post.delete_all
   end
 
   describe ".find_by_sql" do
@@ -104,7 +104,7 @@ describe "find_by_sql" do
       SQL
 
       results = User.find_by_sql(sql)
-      results.size.should eq(1)  # Only Charlie (35) is above average (30)
+      results.size.should eq(1) # Only Charlie (35) is above average (30)
       results.first.name.should eq("Charlie")
     end
 

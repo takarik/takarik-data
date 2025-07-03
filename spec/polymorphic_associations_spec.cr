@@ -3,10 +3,10 @@ require "./spec_helper"
 describe "Polymorphic Associations" do
   before_each do
     # Clean up test data
-    Picture.all.delete_all
-    Employee.all.delete_all
-    Product.all.delete_all
-    Event.all.delete_all
+    Picture.delete_all
+    Employee.delete_all
+    Product.delete_all
+    Event.delete_all
   end
 
   describe "polymorphic belongs_to" do

@@ -37,7 +37,7 @@ describe "Merge Functionality" do
       # Verify SQL shows only the merged condition
       sql = result.to_sql
       sql.should contain("out_of_print = ?")
-      sql.should_not contain("AND")  # Should not have both conditions
+      sql.should_not contain("AND") # Should not have both conditions
     end
 
     it "merges where conditions with scope conditions" do
@@ -107,7 +107,7 @@ describe "Merge Functionality" do
       result = MergeBook.in_print.merge(MergeBook.out_of_print).where("price > ?", 100.0).order(:title)
 
       books = result.to_a
-      books.size.should eq(2)  # Out of print books with price > 100
+      books.size.should eq(2) # Out of print books with price > 100
       books.all? { |book| book.out_of_print == true }.should be_true
       books.all? { |book| book.price.not_nil! > 100.0 }.should be_true
 
@@ -138,7 +138,7 @@ describe "Merge Functionality" do
       books = result.to_a
       # Should respect the merged condition (out_of_print) but still apply default scope
       books.all? { |book| book.out_of_print == true }.should be_true
-      books.all? { |book| book.year_published.not_nil! >= 1970 }.should be_true  # Default scope condition
+      books.all? { |book| book.year_published.not_nil! >= 1970 }.should be_true # Default scope condition
     end
   end
 

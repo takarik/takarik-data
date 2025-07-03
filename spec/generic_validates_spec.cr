@@ -67,7 +67,7 @@ end
 describe "Generic Validates Macro" do
   before_each do
     # Clean up test data
-    User.all.delete_all
+    User.delete_all
   end
 
   describe "presence validation" do

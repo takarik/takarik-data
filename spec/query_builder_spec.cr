@@ -1595,7 +1595,7 @@ describe Takarik::Data::QueryBuilder do
   describe "batch processing methods" do
     before_each do
       # Clean up and create a larger dataset for batch testing
-      User.all.delete_all
+      User.delete_all
 
       # Create 10 users for batch testing
       10.times do |i|

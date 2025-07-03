@@ -932,6 +932,108 @@ module Takarik::Data
     end
 
     # ========================================
+    # CLASS METHODS - DELETION
+    # ========================================
+
+    # Find records matching the given conditions and destroy them (with callbacks).
+    # This method loads each record and calls destroy on it, triggering callbacks.
+    #
+    # Examples:
+    #   Book.destroy_by(author: "Douglas Adams")
+    #   Customer.destroy_by(active: false)
+    #   Order.destroy_by(status: "cancelled", created_at: 1.week.ago..Time.current)
+    #
+    # Returns the number of records destroyed.
+    #
+    # SQL: SELECT * FROM books WHERE (books.author = 'Douglas Adams')
+    # Then: DELETE FROM books WHERE id = ? (for each record)
+    def self.destroy_by(conditions : Hash(String, DB::Any))
+      records = where(conditions).to_a
+      count = 0
+
+      records.each do |record|
+        if record.destroy
+          count += 1
+        end
+      end
+
+      count
+    end
+
+    def self.destroy_by(**conditions)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      destroy_by(processed_conditions)
+    end
+
+    # Destroy all records in the model's table (with callbacks).
+    # This method loads each record and calls destroy on it, triggering callbacks.
+    #
+    # Examples:
+    #   Book.destroy_all
+    #   Customer.where(active: false).destroy_all
+    #
+    # Returns the number of records destroyed.
+    #
+    # SQL: SELECT * FROM books
+    # Then: DELETE FROM books WHERE id = ? (for each record)
+    def self.destroy_all
+      records = all.to_a
+      count = 0
+
+      records.each do |record|
+        if record.destroy
+          count += 1
+        end
+      end
+
+      count
+    end
+
+    # Delete records matching the given conditions (without callbacks).
+    # This method executes a DELETE SQL statement directly without loading records or triggering callbacks.
+    # This is much faster than destroy_by but doesn't trigger callbacks or validations.
+    #
+    # Examples:
+    #   Book.delete_by(author: "Douglas Adams")
+    #   Customer.delete_by(active: false)
+    #   Order.delete_by(status: ["cancelled", "refunded"])  # Array values (IN clause)
+    #   User.delete_by(name: nil)  # Nil values (IS NULL)
+    #   Product.delete_by(price: 10.0..50.0)  # Range values (BETWEEN)
+    #
+    # Returns the number of records deleted.
+    #
+    # SQL: DELETE FROM books WHERE (books.author = 'Douglas Adams')
+    def self.delete_by(conditions : Hash(String, DB::Any))
+      return 0 if conditions.empty?
+
+      # Use QueryBuilder to properly handle all condition types
+      query.where(conditions).delete_all
+    end
+
+    def self.delete_by(**conditions)
+      processed_conditions = process_association_attributes_for_create(conditions)
+      delete_by(processed_conditions)
+    end
+
+    # Delete all records in the model's table (without callbacks).
+    # This method executes a DELETE SQL statement directly without loading records or triggering callbacks.
+    # This is much faster than destroy_all but doesn't trigger callbacks or validations.
+    #
+    # Examples:
+    #   Book.delete_all
+    #   Customer.where(active: false).delete_all
+    #
+    # Returns the number of records deleted.
+    #
+    # SQL: DELETE FROM books
+    def self.delete_all
+      sql = "DELETE FROM #{table_name}"
+
+      result = Takarik::Data.exec_with_logging(connection, sql, [] of DB::Any, model_name, "Delete")
+      result.rows_affected.to_i
+    end
+
+    # ========================================
     # CLASS METHODS - FIND OR CREATE
     # ========================================
 
@@ -1762,6 +1864,40 @@ module Takarik::Data
         # Run after_destroy callbacks (inside transaction)
         run_after_destroy_callbacks
 
+        true
+      else
+        false
+      end
+    end
+
+    # Delete this record from the database without callbacks.
+    # This method executes a DELETE SQL statement directly without triggering any callbacks.
+    # This is much faster than destroy but doesn't trigger callbacks or dependent associations.
+    #
+    # Examples:
+    #   user = User.find(1)
+    #   user.delete  # => true (record deleted without callbacks)
+    #
+    # Returns true if the record was successfully deleted, false otherwise.
+    # Returns false if the record is a new record (not persisted).
+    #
+    # Note: This method does NOT handle dependent associations or run callbacks.
+    # Use destroy if you need callbacks and dependent association handling.
+    def delete
+      return false if new_record?
+
+      # Check if record is readonly
+      if @readonly
+        raise Takarik::Data::ReadOnlyRecord.new
+      end
+
+      query = "DELETE FROM #{self.class.table_name} WHERE #{self.class.primary_key} = ?"
+      id_value = get_attribute(self.class.primary_key)
+
+      result = Takarik::Data.exec_with_logging(self.class.connection, query, [id_value], self.class.name, "Delete")
+
+      if result.rows_affected > 0
+        @persisted = false
         true
       else
         false

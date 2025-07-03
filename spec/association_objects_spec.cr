@@ -3,9 +3,9 @@ require "./spec_helper"
 describe "Association Objects Support" do
   before_each do
     # Clean up test data
-    User.all.delete_all
-    Post.all.delete_all
-    Comment.all.delete_all
+    User.delete_all
+    Post.delete_all
+    Comment.delete_all
   end
 
   describe "create with association objects" do

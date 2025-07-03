@@ -66,8 +66,8 @@ describe "Find or Create functionality" do
       end
 
       found_user.should eq(existing_user)
-      found_user.email.should eq("andy@example.com")  # Original email, not from block
-      found_user.age.should eq(25)  # Original age, not from block
+      found_user.email.should eq("andy@example.com") # Original email, not from block
+      found_user.age.should eq(25)                   # Original age, not from block
     end
   end
 
@@ -114,10 +114,10 @@ describe "Find or Create functionality" do
       new_user.new_record?.should be_true
       new_user.name.should eq("Andy")
       new_user.email.should eq("andy@example.com")
-      User.count.should eq(0)  # Not saved yet
+      User.count.should eq(0) # Not saved yet
     end
 
-        it "can save initialized record later" do
+    it "can save initialized record later" do
       new_user = User.find_or_initialize_by(name: "Andy", email: "andy@example.com")
       new_user.age = 25
 
@@ -155,9 +155,9 @@ describe "Find or Create functionality" do
 
       new_user.persisted?.should be_true
       new_user.name.should eq("Andy")
-      new_user.email.should eq("andy@example.com")  # from find_or_create_by, not create_with
-      new_user.active.should eq(true)  # from find_or_create_by, not create_with
-      new_user.age.should eq(25)       # from create_with
+      new_user.email.should eq("andy@example.com") # from find_or_create_by, not create_with
+      new_user.active.should eq(true)              # from find_or_create_by, not create_with
+      new_user.age.should eq(25)                   # from create_with
     end
 
     it "doesn't affect finding existing records" do
@@ -166,8 +166,8 @@ describe "Find or Create functionality" do
       found_user = User.create_with(active: false, age: 25).find_or_create_by(name: "Andy")
 
       found_user.should eq(existing_user)
-      found_user.active.should eq(true)  # Original value, not from create_with
-      found_user.age.should eq(30)       # Original value, not from create_with
+      found_user.active.should eq(true) # Original value, not from create_with
+      found_user.age.should eq(30)      # Original value, not from create_with
     end
 
     it "works with find_or_initialize_by" do

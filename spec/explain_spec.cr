@@ -3,9 +3,9 @@ require "./spec_helper"
 describe "QueryBuilder EXPLAIN functionality" do
   before_each do
     # Clean up any existing data
-    User.all.delete_all
-    Post.all.delete_all
-    Comment.all.delete_all
+    User.delete_all
+    Post.delete_all
+    Comment.delete_all
   end
 
   describe "#explain" do

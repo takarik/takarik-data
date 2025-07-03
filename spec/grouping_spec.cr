@@ -10,7 +10,7 @@ end
 describe "GROUP BY functionality" do
   before_each do
     # Clear existing data
-    User.all.delete_all
+    User.delete_all
 
     # Create test data with different statuses
     User.create(name: "Alice", email: "alice@example.com", age: 25, active: true)

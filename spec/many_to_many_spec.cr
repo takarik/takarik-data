@@ -78,11 +78,11 @@ end
 describe "Many-to-Many Associations" do
   before_each do
     # Clean up test data
-    Assembly.all.delete_all
-    Part.all.delete_all
-    Manifest.all.delete_all
-    Course.all.delete_all
-    Student.all.delete_all
+    Assembly.delete_all
+    Part.delete_all
+    Manifest.delete_all
+    Course.delete_all
+    Student.delete_all
 
     # Clean join table
     begin

@@ -3,8 +3,8 @@ require "./spec_helper"
 describe "calculation methods" do
   before_each do
     # Clean up any existing test data
-    User.all.delete_all
-    Post.all.delete_all
+    User.delete_all
+    Post.delete_all
   end
 
   describe ".count" do
@@ -38,7 +38,7 @@ describe "calculation methods" do
       Post.create(title: "Alice's Post", content: "Content", user_id: user1.id_value)
       Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
-      User.joins(:posts).count.should eq(2)  # Only users with posts
+      User.joins(:posts).count.should eq(2) # Only users with posts
     end
 
     it "counts records with limit" do
@@ -52,7 +52,7 @@ describe "calculation methods" do
 
     it "counts records with group by" do
       User.create(name: "Alice", email: "alice@example.com", age: 25)
-      User.create(name: "Bob", email: "bob@example.com", age: 25)  # Same age
+      User.create(name: "Bob", email: "bob@example.com", age: 25) # Same age
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
       result = User.group("age").count
@@ -95,7 +95,7 @@ describe "calculation methods" do
 
     it "counts with group by" do
       User.create(name: "Alice", email: "alice@example.com", age: 25)
-      User.create(name: "Bob", email: "bob@example.com", age: 25)  # Same age
+      User.create(name: "Bob", email: "bob@example.com", age: 25) # Same age
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
       result = User.group("age").count("name")
@@ -127,8 +127,8 @@ describe "calculation methods" do
       User.create(name: "Bob", email: "bob@example.com", age: 30)
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
-      User.where("age > 28").sum("age").should eq(65)  # 30 + 35
-      User.where("age > 40").sum("age").should eq(0)   # No records
+      User.where("age > 28").sum("age").should eq(65) # 30 + 35
+      User.where("age > 40").sum("age").should eq(0)  # No records
     end
 
     it "calculates sum with joins" do
@@ -139,7 +139,7 @@ describe "calculation methods" do
       Post.create(title: "Alice's Post", content: "Content", user_id: user1.id_value)
       Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
-      User.joins(:posts).sum("age").should eq(55)  # 25 + 30 (only users with posts)
+      User.joins(:posts).sum("age").should eq(55) # 25 + 30 (only users with posts)
     end
 
     it "returns 0 for empty result set" do
@@ -172,7 +172,7 @@ describe "calculation methods" do
       User.create(name: "Charlie", email: "charlie@example.com", age: 40)
 
       result = User.where("age >= 30").average("age")
-      result.should eq(35.0)  # (30 + 40) / 2
+      result.should eq(35.0) # (30 + 40) / 2
     end
 
     it "calculates average with joins" do
@@ -184,7 +184,7 @@ describe "calculation methods" do
       Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
       result = User.joins(:posts).average("age")
-      result.should eq(30.0)  # (20 + 40) / 2 (only users with posts)
+      result.should eq(30.0) # (20 + 40) / 2 (only users with posts)
     end
 
     it "returns nil for empty result set" do
@@ -225,7 +225,7 @@ describe "calculation methods" do
       Post.create(title: "Alice's Post", content: "Content", user_id: user1.id_value)
       Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
-      User.joins(:posts).minimum("age").should eq(25)  # Alice has the minimum age among users with posts
+      User.joins(:posts).minimum("age").should eq(25) # Alice has the minimum age among users with posts
     end
 
     it "works with string columns" do
@@ -233,7 +233,7 @@ describe "calculation methods" do
       User.create(name: "Bob", email: "bob@example.com", age: 30)
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
-      User.minimum("name").should eq("Alice")  # Alphabetically first
+      User.minimum("name").should eq("Alice") # Alphabetically first
     end
 
     it "returns nil for empty result set" do
@@ -274,7 +274,7 @@ describe "calculation methods" do
       Post.create(title: "Alice's Post", content: "Content", user_id: user1.id_value)
       Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
-      User.joins(:posts).maximum("age").should eq(30)  # Bob has the maximum age among users with posts
+      User.joins(:posts).maximum("age").should eq(30) # Bob has the maximum age among users with posts
     end
 
     it "works with string columns" do
@@ -282,7 +282,7 @@ describe "calculation methods" do
       User.create(name: "Bob", email: "bob@example.com", age: 30)
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
-      User.maximum("name").should eq("Charlie")  # Alphabetically last
+      User.maximum("name").should eq("Charlie") # Alphabetically last
     end
 
     it "returns nil for empty result set" do
@@ -294,11 +294,11 @@ describe "calculation methods" do
   describe "calculation methods with complex queries" do
     it "works with distinct" do
       User.create(name: "Alice", email: "alice@example.com", age: 25)
-      User.create(name: "Bob", email: "bob@example.com", age: 25)  # Same age
+      User.create(name: "Bob", email: "bob@example.com", age: 25) # Same age
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
       # Note: DISTINCT with aggregations might behave differently depending on the database
-      User.select("age").distinct.count.should eq(2)  # Two distinct ages: 25, 35
+      User.select("age").distinct.count.should eq(2) # Two distinct ages: 25, 35
     end
 
     it "works with order clauses" do
@@ -327,9 +327,9 @@ describe "calculation methods" do
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
       User.create(name: "David", email: "david@example.com", age: 40)
 
-      User.where("age BETWEEN ? AND ?", 28, 37).count.should eq(2)  # Bob and Charlie
-      User.where("age BETWEEN ? AND ?", 28, 37).sum("age").should eq(65)  # 30 + 35
-      User.where("age BETWEEN ? AND ?", 28, 37).average("age").should eq(32.5)  # (30 + 35) / 2
+      User.where("age BETWEEN ? AND ?", 28, 37).count.should eq(2)             # Bob and Charlie
+      User.where("age BETWEEN ? AND ?", 28, 37).sum("age").should eq(65)       # 30 + 35
+      User.where("age BETWEEN ? AND ?", 28, 37).average("age").should eq(32.5) # (30 + 35) / 2
     end
   end
 
@@ -384,7 +384,7 @@ describe "calculation methods" do
 
       # Method chaining should work properly
       User.where("age > 25").order("age").limit(2).count.should eq(2)
-      User.where("age > 25").sum("age").should eq(65)  # 30 + 35
+      User.where("age > 25").sum("age").should eq(65) # 30 + 35
     end
   end
 end

@@ -3,8 +3,8 @@ require "./spec_helper"
 describe "existence checking methods" do
   before_each do
     # Clean up any existing test data
-    User.all.delete_all
-    Post.all.delete_all
+    User.delete_all
+    Post.delete_all
   end
 
   describe ".exists?" do
@@ -29,8 +29,8 @@ describe "existence checking methods" do
       user2 = User.create(name: "Bob", email: "bob@example.com", age: 30)
 
       User.exists?([user1.id_value, user2.id_value]).should be_true
-      User.exists?([user1.id_value, 99999]).should be_true  # Any one exists
-      User.exists?([99998, 99999]).should be_false  # None exist
+      User.exists?([user1.id_value, 99999]).should be_true # Any one exists
+      User.exists?([99998, 99999]).should be_false         # None exist
     end
 
     it "returns false for empty array" do
@@ -158,8 +158,8 @@ describe "existence checking methods" do
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
       User.where("age >= 30").many?.should be_true  # Bob and Charlie
-      User.where("age >= 35").many?.should be_false  # Only Charlie
-      User.where("age >= 40").many?.should be_false  # None
+      User.where("age >= 35").many?.should be_false # Only Charlie
+      User.where("age >= 40").many?.should be_false # None
     end
 
     it "works with complex conditions" do
@@ -170,7 +170,7 @@ describe "existence checking methods" do
 
       User.where("age BETWEEN ? AND ?", 25, 35).many?.should be_true  # Alice, Bob, Charlie
       User.where("age BETWEEN ? AND ?", 35, 40).many?.should be_true  # Charlie, David
-      User.where("age BETWEEN ? AND ?", 40, 45).many?.should be_false  # Only David
+      User.where("age BETWEEN ? AND ?", 40, 45).many?.should be_false # Only David
     end
 
     it "works with joins" do
@@ -179,7 +179,7 @@ describe "existence checking methods" do
       post1 = Post.create(title: "Alice's Post", content: "Content", user_id: user1.id_value)
       post2 = Post.create(title: "Bob's Post", content: "Content", user_id: user2.id_value)
 
-      User.joins(:posts).many?.should be_true  # Alice and Bob both have posts
+      User.joins(:posts).many?.should be_true # Alice and Bob both have posts
     end
   end
 
@@ -249,13 +249,13 @@ describe "existence checking methods" do
       User.create(name: "Charlie", email: "charlie@example.com", age: 35)
 
       User.limit(1).exists?.should be_true
-      User.limit(1).many?.should be_false  # Only checking within the limit
+      User.limit(1).many?.should be_false # Only checking within the limit
       User.offset(1).limit(1).exists?.should be_true
     end
 
     it "handles distinct correctly" do
       User.create(name: "Alice", email: "alice@example.com", age: 25)
-      User.create(name: "Bob", email: "bob@example.com", age: 25)  # Same age
+      User.create(name: "Bob", email: "bob@example.com", age: 25) # Same age
 
       User.distinct.exists?.should be_true
       User.select("age").distinct.exists?.should be_true

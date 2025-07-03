@@ -74,7 +74,7 @@ describe "Unscoped Functionality" do
       all_books.size.should eq(4)
 
       # Scoped should only return recent books (published >= 1970)
-      scoped_books.size.should eq(3)  # 2020, 2022, 1980 books
+      scoped_books.size.should eq(3) # 2020, 2022, 1980 books
       scoped_books.all? { |book| book.year_published.not_nil! >= 1970 }.should be_true
     end
 
@@ -137,7 +137,7 @@ describe "Unscoped Functionality" do
       end
 
       books = result.to_a
-      books.size.should eq(2)  # Both classic books have price > 100
+      books.size.should eq(2) # Both classic books have price > 100
       books.all? { |book| book.category == "Classic" }.should be_true
       books.all? { |book| book.price.not_nil! > 100.0 }.should be_true
 
@@ -188,8 +188,8 @@ describe "Unscoped Functionality" do
       unscoped_books = unscoped.to_a
 
       # Scoped should have fewer results (default scope filters out old books)
-      scoped_books.size.should eq(1)  # Only 1980 book
-      unscoped_books.size.should eq(2)  # Both 1960 and 1980 books
+      scoped_books.size.should eq(1)   # Only 1980 book
+      unscoped_books.size.should eq(2) # Both 1960 and 1980 books
 
       # Verify SQL differences
       scoped_sql = scoped.to_sql
