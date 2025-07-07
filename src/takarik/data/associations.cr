@@ -133,7 +133,7 @@ module Takarik::Data
       when .has_many?, .has_many_polymorphic?
         # For has_many with dependent: :destroy, we need to call destroy on each record
         # to trigger their callbacks and nested dependent associations
-        records = get_associated_records(association)
+        records = get_associated_records(association, connection)
         records.each do |record|
           # Use transaction-aware destroy if connection is provided
           if connection
@@ -144,7 +144,7 @@ module Takarik::Data
         end
       when .has_one?
         # Same approach for has_one
-        record = get_associated_record(association)
+        record = get_associated_record(association, connection)
         if record
           if connection
             record.destroy_with_connection(connection)
@@ -222,7 +222,7 @@ module Takarik::Data
     end
 
     # Clean class-based association record retrieval
-    private def get_associated_records(association : Association) : Array(BaseModel)
+    private def get_associated_records(association : Association, connection = nil) : Array(BaseModel)
       primary_key_value = get_attribute(association.primary_key)
       return [] of BaseModel unless primary_key_value
 
@@ -233,30 +233,83 @@ module Takarik::Data
         return [] of BaseModel unless target_class
 
         current_class_name = self.class.name.split("::").last
-        conditions = Hash(String, DB::Any).new
-        conditions[association.foreign_key] = primary_key_value
-        conditions[association.polymorphic_type.not_nil!] = current_class_name
-        target_class.where(conditions).to_a.map(&.as(BaseModel))
+        if connection
+          # Use provided connection for query
+          sql = "SELECT * FROM #{target_class.table_name} WHERE #{association.foreign_key} = ? AND #{association.polymorphic_type} = ?"
+          results = [] of BaseModel
+          start_time = Time.monotonic
+          connection.query(sql, primary_key_value, current_class_name) do |rs|
+            while rs.move_next
+              instance = target_class.new
+              instance.load_from_result_set(rs)
+              results << instance.as(BaseModel)
+            end
+          end
+          end_time = Time.monotonic
+          Takarik::Data.log_query(sql, [primary_key_value, current_class_name], end_time - start_time, target_class.name, "Load")
+          results
+        else
+          # Use regular query builder
+          conditions = Hash(String, DB::Any).new
+          conditions[association.foreign_key] = primary_key_value
+          conditions[association.polymorphic_type.not_nil!] = current_class_name
+          target_class.where(conditions).to_a.map(&.as(BaseModel))
+        end
       else
         # Regular association handling
         return [] of BaseModel unless association.class_type
 
-        conditions = Hash(String, DB::Any).new
-        conditions[association.foreign_key] = primary_key_value
-        association.class_type.not_nil!.where(conditions).to_a.map(&.as(BaseModel))
+        if connection
+          # Use provided connection for query
+          sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.foreign_key} = ?"
+          results = [] of BaseModel
+          start_time = Time.monotonic
+          connection.query(sql, primary_key_value) do |rs|
+            while rs.move_next
+              instance = association.class_type.not_nil!.new
+              instance.load_from_result_set(rs)
+              results << instance.as(BaseModel)
+            end
+          end
+          end_time = Time.monotonic
+          Takarik::Data.log_query(sql, [primary_key_value], end_time - start_time, association.class_type.not_nil!.name, "Load")
+          results
+        else
+          # Use regular query builder
+          conditions = Hash(String, DB::Any).new
+          conditions[association.foreign_key] = primary_key_value
+          association.class_type.not_nil!.where(conditions).to_a.map(&.as(BaseModel))
+        end
       end
     end
 
-    private def get_associated_record(association : Association) : BaseModel?
+    private def get_associated_record(association : Association, connection = nil) : BaseModel?
       primary_key_value = get_attribute(association.primary_key)
       return nil unless primary_key_value
 
       return nil unless association.class_type
 
-      # Use the actual class type directly
-      conditions = Hash(String, DB::Any).new
-      conditions[association.foreign_key] = primary_key_value
-      association.class_type.not_nil!.where(conditions).first.try(&.as(BaseModel))
+      if connection
+        # Use provided connection for query
+        sql = "SELECT * FROM #{association.class_type.not_nil!.table_name} WHERE #{association.foreign_key} = ? LIMIT 1"
+        result = nil
+        start_time = Time.monotonic
+        connection.query(sql, primary_key_value) do |rs|
+          if rs.move_next
+            instance = association.class_type.not_nil!.new
+            instance.load_from_result_set(rs)
+            result = instance.as(BaseModel)
+          end
+        end
+        end_time = Time.monotonic
+        Takarik::Data.log_query(sql, [primary_key_value], end_time - start_time, association.class_type.not_nil!.name, "Load")
+        result
+      else
+        # Use regular query builder
+        conditions = Hash(String, DB::Any).new
+        conditions[association.foreign_key] = primary_key_value
+        association.class_type.not_nil!.where(conditions).first.try(&.as(BaseModel))
+      end
     end
 
     # ========================================
